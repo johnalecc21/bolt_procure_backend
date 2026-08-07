@@ -96,5 +96,6 @@ El servidor difunde el evento `state` a todos los conectados a esa sala cada vez
 
 ## Notas
 
-- Este backend reemplaza gradualmente la lógica simulada del frontend (`src/lib/mock/*.ts` en `bolt_procure`). El frontend aún no está conectado a esta API — ese es el siguiente paso.
-- El log de auditoría, notificaciones y homologación usan datos reales persistidos en Postgres (a diferencia del store en memoria del frontend).
+- El frontend (`bolt_procure`, rama `integration`) ya está conectado a esta API vía `src/lib/api/*.ts` (auth, requerimientos, ofertas, adjudicación, contratos, homologación, subasta en vivo, etc.). Los stores mock correspondientes fueron eliminados del frontend.
+- El log de auditoría, notificaciones y homologación usan datos reales persistidos en Postgres.
+- Pantallas sin modelo de datos propio (Analítica CFO, Auditoría de Ahorro, Asistente de Redacción RFP, Onboarding ERP) siguen simuladas en el frontend a propósito — conectarlas requeriría diseñar nuevas entidades, no solo cablear lo existente.
