@@ -1,17 +1,23 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EstadoDocumento, EstadoHomologacion, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import { OcrService } from './ocr.service';
+import { OfacService } from './ofac.service';
 
 const BUCKET = 'homologacion-documentos';
 
 @Injectable()
 export class HomologacionService {
+  private readonly logger = new Logger(HomologacionService.name);
+
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
     private supabase: SupabaseService,
+    private ocr: OcrService,
+    private ofac: OfacService,
   ) {}
 
   private async proveedorIdForUser(userId: string) {
@@ -91,9 +97,57 @@ export class HomologacionService {
 
   async enviar(userId: string) {
     const proveedorId = await this.proveedorIdForUser(userId);
+    const homologacion = await this.prisma.homologacion.findUnique({
+      where: { proveedorId },
+      include: { documentos: true, proveedor: true },
+    });
+    if (!homologacion) throw new NotFoundException('Aún no has iniciado tu homologación.');
+
+    const alertas: string[] = [];
+    let score = 70;
+
+    for (const doc of homologacion.documentos) {
+      if (!doc.storagePath) continue;
+      const filename = doc.storagePath.split('/').pop() ?? doc.storagePath;
+      const { data, error } = await this.supabase.admin.storage.from(BUCKET).download(doc.storagePath);
+      if (error || !data) {
+        this.logger.warn(`No se pudo descargar ${doc.storagePath}: ${error?.message}`);
+        alertas.push(`No se pudo leer el documento "${doc.nombre}".`);
+        continue;
+      }
+      const buffer = Buffer.from(await data.arrayBuffer());
+      const text = await this.ocr.extractText(buffer, filename);
+      if (!text) {
+        alertas.push(`No se pudo extraer texto del documento "${doc.nombre}" (OCR).`);
+        continue;
+      }
+      if (doc.nombre.toLowerCase().includes('nit') || doc.nombre.toLowerCase().includes('rut')) {
+        const digitsOnly = text.replace(/[^0-9]/g, '');
+        if (!/\d{9,10}/.test(digitsOnly)) {
+          alertas.push(`No se detectó un número de NIT/RUT válido en "${doc.nombre}".`);
+        } else {
+          score += 10;
+        }
+      }
+    }
+
+    const ofacResult = await this.ofac.checkName(homologacion.proveedor.nombre);
+    if (ofacResult.matched) {
+      alertas.push(
+        `Posible coincidencia en la lista OFAC/SDN: "${ofacResult.matchedName}" (similitud ${Math.round((ofacResult.similarity ?? 0) * 100)}%).`,
+      );
+      score = Math.min(score, 20);
+    } else {
+      score += 10;
+    }
+
+    score = Math.max(0, Math.min(100, score));
+    const estado = alertas.length > 0 ? EstadoHomologacion.ZONA_GRIS : EstadoHomologacion.EN_REVISION;
+
     return this.prisma.homologacion.update({
       where: { proveedorId },
-      data: { estado: EstadoHomologacion.EN_REVISION, fechaSolicitud: new Date() },
+      data: { estado, score, alertas, fechaSolicitud: new Date() },
+      include: { documentos: true },
     });
   }
 
