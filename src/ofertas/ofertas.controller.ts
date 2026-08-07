@@ -18,6 +18,18 @@ export class OfertasController {
   }
 
   @PortalOnly('PROVEEDOR')
+  @Get('mine/historial')
+  miHistorial(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.miHistorial(user.sub);
+  }
+
+  @PortalOnly('PROVEEDOR')
+  @Get('mine/:requerimientoId')
+  mine(@CurrentUser() user: AuthenticatedUser, @Param('requerimientoId') requerimientoId: string) {
+    return this.service.mine(user.sub, requerimientoId);
+  }
+
+  @PortalOnly('PROVEEDOR')
   @Put()
   upsert(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertOfertaDto) {
     return this.service.upsert(user.sub, dto);

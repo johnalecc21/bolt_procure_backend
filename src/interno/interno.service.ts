@@ -21,10 +21,25 @@ export class InternoService {
 
   // --- Admin clientes ------------------------------------------------------
 
-  listClientes() {
-    return this.prisma.company.findMany({
-      include: { _count: { select: { requerimientos: true } } },
+  async listClientes() {
+    const companies = await this.prisma.company.findMany({
+      include: {
+        _count: { select: { requerimientos: true } },
+        memberships: {
+          where: { user: { role: 'ADMIN_CLIENTE' } },
+          include: { user: true },
+          take: 1,
+        },
+      },
     });
+    return companies.map((c) => ({
+      id: c.id,
+      nombre: c.nombre,
+      plan: c.plan,
+      facturacion: c.facturacion,
+      procesosActivos: c._count.requerimientos,
+      contactoPrincipal: c.memberships[0]?.user.nombre ?? '—',
+    }));
   }
 
   async impersonar(companyId: string, actorId: string, actorNombre: string, motivo: string) {

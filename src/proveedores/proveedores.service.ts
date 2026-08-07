@@ -34,6 +34,15 @@ export class ProveedoresService {
     return proveedor;
   }
 
+  async findByUserId(userId: string) {
+    const proveedor = await this.prisma.proveedorProfile.findUnique({
+      where: { userId },
+      include: { homologacion: true },
+    });
+    if (!proveedor) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
+    return proveedor;
+  }
+
   async createExterno(nombre: string) {
     const iniciales = nombre.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
     const proveedor = await this.prisma.proveedorProfile.create({

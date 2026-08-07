@@ -17,7 +17,7 @@ export class PagosService {
     const proveedorId = await this.proveedorIdForUser(userId);
     return this.prisma.pagoPO.findMany({
       where: { proveedorId },
-      include: { contrato: true },
+      include: { contrato: { include: { company: true } } },
       orderBy: { fechaPagoPactada: 'asc' },
     });
   }
