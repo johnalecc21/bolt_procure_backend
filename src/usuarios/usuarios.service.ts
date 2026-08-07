@@ -1,8 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, ConflictException } from '@nestjs/common';
 import { Role, Portal } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { SupabaseService } from '../supabase/supabase.service';
 import { InviteUserDto } from './dto/invite-user.dto';
 
 @Injectable()
@@ -10,6 +10,7 @@ export class UsuariosService {
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
+    private supabase: SupabaseService,
   ) {}
 
   async listByCompany(companyId: string) {
@@ -34,22 +35,29 @@ export class UsuariosService {
   }
 
   async invite(companyId: string, dto: InviteUserDto, actorNombre: string) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
-    const iniciales = dto.email.split('@')[0].slice(0, 2).toUpperCase();
-    const passwordHash = await bcrypt.hash('demo123', 10);
+    const email = dto.email.toLowerCase();
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    const iniciales = email.split('@')[0].slice(0, 2).toUpperCase();
 
-    const user =
-      existing ??
-      (await this.prisma.user.create({
+    let user = existing;
+    if (!user) {
+      // Sends a real "you've been invited" email via Supabase Auth — the
+      // recipient sets their own password the first time they open the link.
+      const { data, error } = await this.supabase.admin.auth.admin.inviteUserByEmail(email);
+      if (error || !data.user) {
+        throw new ConflictException(error?.message ?? 'No se pudo invitar al usuario.');
+      }
+      user = await this.prisma.user.create({
         data: {
-          nombre: dto.email.split('@')[0],
-          email: dto.email.toLowerCase(),
-          passwordHash,
+          id: data.user.id,
+          nombre: email.split('@')[0],
+          email,
           portal: Portal.CLIENTE,
           role: dto.role,
           iniciales,
         },
-      }));
+      });
+    }
 
     await this.prisma.companyMembership.upsert({
       where: { userId_companyId: { userId: user.id, companyId } },

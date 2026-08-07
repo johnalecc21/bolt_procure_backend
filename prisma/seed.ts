@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import {
   PrismaClient,
   Portal,
@@ -9,18 +10,41 @@ import {
   Prioridad,
   EstadoCaso,
 } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
+import { createClient } from '@supabase/supabase-js';
 
 const prisma = new PrismaClient();
 const DEMO_PASSWORD = 'demo123';
 
-async function hash(pw: string) {
-  return bcrypt.hash(pw, 10);
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } },
+);
+
+/** Creates the Supabase Auth user if needed (idempotent) and returns its id. */
+async function ensureSupabaseUser(email: string, password: string): Promise<string> {
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (data?.user) return data.user.id;
+
+  // Already exists from a previous seed run — look it up instead.
+  let page = 1;
+  while (page < 20) {
+    const { data: list, error: listError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 200 });
+    if (listError) throw listError;
+    const found = list.users.find((u) => u.email === email);
+    if (found) return found.id;
+    if (list.users.length < 200) break;
+    page += 1;
+  }
+  throw error ?? new Error(`Could not create or find Supabase user for ${email}`);
 }
 
 async function main() {
   console.log('Seeding...');
-  const passwordHash = await hash(DEMO_PASSWORD);
 
   // --- Companies -----------------------------------------------------------
   const acme = await prisma.company.upsert({
@@ -44,63 +68,40 @@ async function main() {
     create: { id: 'cloudsphere-co', nombre: 'CloudSphere Technologies' },
   });
 
-  // --- Users -----------------------------------------------------------------
-  const carlos = await prisma.user.upsert({
-    where: { email: 'carlos@acme.com' },
-    update: {},
-    create: {
-      nombre: 'Carlos Méndez', email: 'carlos@acme.com', passwordHash,
-      portal: Portal.CLIENTE, role: Role.COMPRADOR, iniciales: 'CM', cargo: 'Gerente de Compras',
-    },
+  // --- Users -------------------------------------------------------------
+  // Each demo user is first created (or reused) as a real Supabase Auth user,
+  // then our `public.users` profile row is created with that same id.
+  async function upsertUser(email: string, data: {
+    nombre: string; portal: Portal; role: Role; iniciales: string; cargo: string;
+  }) {
+    const id = await ensureSupabaseUser(email, DEMO_PASSWORD);
+    return prisma.user.upsert({
+      where: { email },
+      update: {},
+      create: { id, email, ...data },
+    });
+  }
+
+  const carlos = await upsertUser('carlos@acme.com', {
+    nombre: 'Carlos Méndez', portal: Portal.CLIENTE, role: Role.COMPRADOR, iniciales: 'CM', cargo: 'Gerente de Compras',
   });
-  const laura = await prisma.user.upsert({
-    where: { email: 'laura@acme.com' },
-    update: {},
-    create: {
-      nombre: 'Laura Torres', email: 'laura@acme.com', passwordHash,
-      portal: Portal.CLIENTE, role: Role.COMPRADOR, iniciales: 'LT', cargo: 'Compradora Senior',
-    },
+  const laura = await upsertUser('laura@acme.com', {
+    nombre: 'Laura Torres', portal: Portal.CLIENTE, role: Role.COMPRADOR, iniciales: 'LT', cargo: 'Compradora Senior',
   });
-  const anaCfo = await prisma.user.upsert({
-    where: { email: 'ana.cfo@acme.com' },
-    update: {},
-    create: {
-      nombre: 'Ana Ruiz', email: 'ana.cfo@acme.com', passwordHash,
-      portal: Portal.CLIENTE, role: Role.APROBADOR_CFO, iniciales: 'AR', cargo: 'CFO', requires2FA: true,
-    },
+  const anaCfo = await upsertUser('ana.cfo@acme.com', {
+    nombre: 'Ana Ruiz', portal: Portal.CLIENTE, role: Role.APROBADOR_CFO, iniciales: 'AR', cargo: 'CFO',
   });
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@acme.com' },
-    update: {},
-    create: {
-      nombre: 'Roberto Silva', email: 'admin@acme.com', passwordHash,
-      portal: Portal.CLIENTE, role: Role.ADMIN_CLIENTE, iniciales: 'RS', cargo: 'Admin de Cuenta',
-      requires2FA: true,
-    },
+  const admin = await upsertUser('admin@acme.com', {
+    nombre: 'Roberto Silva', portal: Portal.CLIENTE, role: Role.ADMIN_CLIENTE, iniciales: 'RS', cargo: 'Admin de Cuenta',
   });
-  const diego = await prisma.user.upsert({
-    where: { email: 'contacto@cloudsphere.com' },
-    update: {},
-    create: {
-      nombre: 'Diego Ramírez', email: 'contacto@cloudsphere.com', passwordHash,
-      portal: Portal.PROVEEDOR, role: Role.PROVEEDOR, iniciales: 'DR', cargo: 'Gerente Comercial',
-    },
+  const diego = await upsertUser('contacto@cloudsphere.com', {
+    nombre: 'Diego Ramírez', portal: Portal.PROVEEDOR, role: Role.PROVEEDOR, iniciales: 'DR', cargo: 'Gerente Comercial',
   });
-  const anaConsultora = await prisma.user.upsert({
-    where: { email: 'ana.consultora@procureos.com' },
-    update: {},
-    create: {
-      nombre: 'Ana Consultora', email: 'ana.consultora@procureos.com', passwordHash,
-      portal: Portal.INTERNO, role: Role.CONSULTOR, iniciales: 'AC', cargo: 'Sourcing Expert',
-    },
+  const anaConsultora = await upsertUser('ana.consultora@procureos.com', {
+    nombre: 'Ana Consultora', portal: Portal.INTERNO, role: Role.CONSULTOR, iniciales: 'AC', cargo: 'Sourcing Expert',
   });
-  const mateo = await prisma.user.upsert({
-    where: { email: 'compliance@procureos.com' },
-    update: {},
-    create: {
-      nombre: 'Mateo Vargas', email: 'compliance@procureos.com', passwordHash,
-      portal: Portal.INTERNO, role: Role.COMPLIANCE_OPS, iniciales: 'MV', cargo: 'Compliance & Ops',
-    },
+  const mateo = await upsertUser('compliance@procureos.com', {
+    nombre: 'Mateo Vargas', portal: Portal.INTERNO, role: Role.COMPLIANCE_OPS, iniciales: 'MV', cargo: 'Compliance & Ops',
   });
 
   const membership = (userId: string, companyId: string) =>
@@ -300,10 +301,11 @@ async function main() {
   }
 
   console.log('Seed complete.');
-  console.log('Demo users (password "demo123" for all):');
-  console.log('  Cliente: carlos@acme.com, laura@acme.com, ana.cfo@acme.com (2FA), admin@acme.com (2FA, multi-empresa)');
+  console.log('Demo users (password "demo123" for all, real Supabase Auth accounts):');
+  console.log('  Cliente: carlos@acme.com, laura@acme.com, ana.cfo@acme.com, admin@acme.com (multi-empresa)');
   console.log('  Proveedor: contacto@cloudsphere.com');
   console.log('  Interno: ana.consultora@procureos.com, compliance@procureos.com');
+  console.log('2FA is opt-in per user now (real TOTP via Supabase) — enable it from Configuración de Cuenta.');
 }
 
 main()

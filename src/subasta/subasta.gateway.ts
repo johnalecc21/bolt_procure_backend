@@ -1,6 +1,4 @@
 import { Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
   MessageBody,
@@ -11,8 +9,12 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
+import { SupabaseService } from '../supabase/supabase.service';
 import { SubastaService, PujaSeed } from './subasta.service';
-import type { JwtPayload } from '../auth/types';
+
+interface SocketUser {
+  sub: string;
+}
 
 interface JoinPayload {
   requerimientoId: string;
@@ -39,19 +41,17 @@ export class SubastaGateway implements OnGatewayConnection {
 
   constructor(
     private subasta: SubastaService,
-    private jwt: JwtService,
-    private config: ConfigService,
+    private supabase: SupabaseService,
     private prisma: PrismaService,
   ) {}
 
-  handleConnection(client: Socket) {
+  async handleConnection(client: Socket) {
     try {
       const token = client.handshake.auth?.token as string | undefined;
       if (!token) throw new Error('no token');
-      const payload = this.jwt.verify<JwtPayload>(token, {
-        secret: this.config.getOrThrow<string>('JWT_SECRET'),
-      });
-      client.data.user = payload;
+      const { data, error } = await this.supabase.anon.auth.getUser(token);
+      if (error || !data.user) throw new Error('invalid token');
+      client.data.user = { sub: data.user.id } satisfies SocketUser;
     } catch {
       this.logger.warn(`Rejected unauthenticated socket ${client.id}`);
       client.disconnect(true);
@@ -74,7 +74,7 @@ export class SubastaGateway implements OnGatewayConnection {
 
   @SubscribeMessage('pujar')
   async onPujar(@ConnectedSocket() client: Socket, @MessageBody() body: PujarPayload) {
-    const user: JwtPayload = client.data.user;
+    const user: SocketUser = client.data.user;
     const proveedor = await this.prisma.proveedorProfile.findUnique({ where: { userId: user.sub } });
     if (!proveedor) return;
     try {

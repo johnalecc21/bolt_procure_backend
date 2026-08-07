@@ -175,18 +175,18 @@ model Company {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  nombre       String
-  email        String    @unique
-  passwordHash String
-  portal       Portal
-  role         Role
-  iniciales    String
-  cargo        String?
-  requires2FA  Boolean   @default(false)
-  activo       Boolean   @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
+  // Primary key mirrors the Supabase Auth user id (auth.users.id) — Supabase
+  // owns credentials/sessions/MFA, this table only holds our app profile data.
+  id          String    @id
+  nombre      String
+  email       String    @unique
+  portal      Portal
+  role        Role
+  iniciales   String
+  cargo       String?
+  activo      Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
 
   memberships               CompanyMembership[]
   proveedorProfile          ProveedorProfile?
