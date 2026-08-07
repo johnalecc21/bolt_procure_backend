@@ -1,0 +1,608 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Portal {
+  CLIENTE
+  PROVEEDOR
+  INTERNO
+}
+
+enum Role {
+  COMPRADOR
+  APROBADOR_CFO
+  ADMIN_CLIENTE
+  PROVEEDOR
+  CONSULTOR
+  COMPLIANCE_OPS
+}
+
+enum EstadoRequerimiento {
+  BORRADOR
+  PENDIENTE_APROBACION
+  EN_LICITACION
+  EN_NEGOCIACION
+  ADJUDICADO
+  EN_CUMPLIMIENTO
+  CERRADO
+}
+
+enum EstadoHomologacion {
+  EN_REVISION
+  APROBADO
+  RECHAZADO
+  ZONA_GRIS
+}
+
+enum EstadoDocumento {
+  PENDIENTE
+  SUBIDO
+  VALIDADO
+  VENCIDO
+}
+
+enum TipoContrato {
+  CONTRATO
+  PO
+  ADDENDUM
+}
+
+enum EstadoContrato {
+  ACTIVO
+  POR_VENCER
+  VENCIDO
+  EN_RENOVACION
+}
+
+enum TipoAprobacion {
+  SALIDA_LICITACION
+  ADJUDICACION
+  EXCEPCION_PRESUPUESTO
+}
+
+enum EstadoAprobacion {
+  PENDIENTE
+  APROBADA
+  RECHAZADA
+}
+
+enum TipoRegla {
+  UNICA
+  SECUENCIAL
+}
+
+enum EstadoHito {
+  COMPLETADO
+  EN_RIESGO
+  ATRASADO
+  PENDIENTE
+}
+
+enum Severidad {
+  BAJA
+  MEDIA
+  ALTA
+}
+
+enum EstadoDisputa {
+  ABIERTA
+  EN_MEDIACION
+  RESUELTA
+}
+
+enum EstadoInvitacion {
+  NUEVA
+  VISTA
+  RESPONDIDA
+  VENCIDA
+  DECLINADA
+}
+
+enum EstadoPago {
+  PENDIENTE
+  PAGADO
+  VENCIDO
+}
+
+enum TipoNotificacion {
+  APROBACION
+  OFERTA
+  CONTRATO
+  NEGOCIACION
+  PROVEEDOR
+  DISPUTA
+}
+
+enum EstadoCaso {
+  PENDIENTE
+  EN_PROGRESO
+  ESCALADO
+}
+
+enum Prioridad {
+  BAJA
+  MEDIA
+  ALTA
+}
+
+enum PlanCliente {
+  STARTER
+  GROWTH
+  ENTERPRISE
+}
+
+enum EstadoFacturacion {
+  AL_DIA
+  PENDIENTE
+  VENCIDA
+}
+
+enum EstadoSubasta {
+  INACTIVA
+  ACTIVA
+  CERRADA
+}
+
+// ---------------------------------------------------------------------------
+// Identity / tenancy
+// ---------------------------------------------------------------------------
+
+model Company {
+  id          String            @id @default(cuid())
+  nombre      String
+  plan        PlanCliente       @default(STARTER)
+  facturacion EstadoFacturacion @default(AL_DIA)
+  createdAt   DateTime          @default(now())
+
+  memberships    CompanyMembership[]
+  requerimientos Requerimiento[]
+  contratos      Contrato[]
+  disputas       Disputa[]
+  matrizReglas   MatrizAprobacionRegla[]
+  casosConsultor CasoConsultor[]
+  invitaciones   Invitacion[]
+
+  @@map("companies")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  nombre       String
+  email        String    @unique
+  passwordHash String
+  portal       Portal
+  role         Role
+  iniciales    String
+  cargo        String?
+  requires2FA  Boolean   @default(false)
+  activo       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  memberships               CompanyMembership[]
+  proveedorProfile          ProveedorProfile?
+  requerimientosSolicitados Requerimiento[]     @relation("Solicitante")
+  aprobacionesResueltas     Aprobacion[]        @relation("ResueltoPor")
+  notificaciones            Notificacion[]
+  auditLogs                 AuditLogEntry[]
+  casosConsultor            CasoConsultor[]     @relation("Consultor")
+  disputasMediadas          Disputa[]           @relation("Mediador")
+  mensajesDisputa           MensajeDisputa[]
+
+  @@map("users")
+}
+
+model CompanyMembership {
+  id        String  @id @default(cuid())
+  userId    String
+  companyId String
+  activo    Boolean @default(true)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@map("company_memberships")
+}
+
+// ---------------------------------------------------------------------------
+// Cliente domain: requerimientos, aprobaciones, matriz
+// ---------------------------------------------------------------------------
+
+model Requerimiento {
+  id                   String              @id @default(cuid())
+  companyId            String
+  titulo               String
+  categoria            String
+  estado               EstadoRequerimiento @default(BORRADOR)
+  montoEstimado        Int
+  fechaLimite          DateTime
+  progreso             Int                 @default(0)
+  proveedoresInvitados Int                 @default(0)
+  ofertasRecibidas     Int                 @default(0)
+  solicitanteId        String
+  criteriosPeso        Json?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  company     Company @relation(fields: [companyId], references: [id])
+  solicitante User    @relation("Solicitante", fields: [solicitanteId], references: [id])
+
+  ofertas        Oferta[]
+  adjudicacion   Adjudicacion?
+  aprobaciones   Aprobacion[]
+  invitaciones   Invitacion[]
+  comentarios    ComentarioRequerimiento[]
+  documentos     DocumentoRequerimiento[]
+  auctionSession AuctionSession?
+  contratos      Contrato[]
+
+  @@map("requerimientos")
+}
+
+model ComentarioRequerimiento {
+  id              String   @id @default(cuid())
+  requerimientoId String
+  autor           String
+  texto           String
+  createdAt       DateTime @default(now())
+
+  requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
+
+  @@map("comentarios_requerimiento")
+}
+
+model DocumentoRequerimiento {
+  id              String   @id @default(cuid())
+  requerimientoId String
+  nombre          String
+  createdAt       DateTime @default(now())
+
+  requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
+
+  @@map("documentos_requerimiento")
+}
+
+model Aprobacion {
+  id              String           @id @default(cuid())
+  requerimientoId String
+  tipo            TipoAprobacion
+  monto           Int
+  urgente         Boolean          @default(false)
+  estado          EstadoAprobacion @default(PENDIENTE)
+  motivoRechazo   String?
+  resueltoPorId   String?
+  resueltoAt      DateTime?
+  createdAt       DateTime         @default(now())
+
+  requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
+  resueltoPor   User?         @relation("ResueltoPor", fields: [resueltoPorId], references: [id])
+
+  @@map("aprobaciones")
+}
+
+model MatrizAprobacionRegla {
+  id          String    @id @default(cuid())
+  companyId   String
+  montoMin    Int
+  montoMax    Int?
+  aprobadores String
+  tipo        TipoRegla @default(UNICA)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("matriz_aprobacion_reglas")
+}
+
+// ---------------------------------------------------------------------------
+// Proveedores: directorio, homologación, ofertas
+// ---------------------------------------------------------------------------
+
+model ProveedorProfile {
+  id              String   @id @default(cuid())
+  userId          String?  @unique
+  nombre          String
+  iniciales       String
+  categorias      String[]
+  score           Int      @default(0)
+  ubicacion       String
+  certificaciones String[]
+  procesosGanados Int      @default(0)
+  entregasATiempo Int      @default(0)
+  disputasCount   Int      @default(0)
+  color           String
+  createdAt       DateTime @default(now())
+
+  user         User?         @relation(fields: [userId], references: [id])
+  homologacion Homologacion?
+  ofertas      Oferta[]
+  invitaciones Invitacion[]
+  pagos        PagoPO[]
+  disputas     Disputa[]
+
+  @@map("proveedor_profiles")
+}
+
+model Homologacion {
+  id                  String             @id @default(cuid())
+  proveedorId         String             @unique
+  estado              EstadoHomologacion @default(EN_REVISION)
+  score               Int                @default(0)
+  alertas             String[]
+  fechaSolicitud      DateTime           @default(now())
+  proximaRevalidacion DateTime?
+
+  proveedor  ProveedorProfile        @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+  documentos DocumentoHomologacion[]
+
+  @@map("homologaciones")
+}
+
+model DocumentoHomologacion {
+  id             String          @id @default(cuid())
+  homologacionId String
+  nombre         String
+  estado         EstadoDocumento @default(PENDIENTE)
+  vigencia       DateTime?
+
+  homologacion Homologacion @relation(fields: [homologacionId], references: [id], onDelete: Cascade)
+
+  @@map("documentos_homologacion")
+}
+
+model Oferta {
+  id                  String   @id @default(cuid())
+  requerimientoId     String
+  proveedorId         String
+  precioUnitario      Int
+  precioTotal         Int
+  plazoEntregaDias    Int
+  condicionesPagoDias Int
+  garantiaMeses       Int
+  vigenciaOfertaDias  Int
+  calidad             Int      @default(80)
+  enviada             Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  requerimiento Requerimiento    @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
+  proveedor     ProveedorProfile @relation(fields: [proveedorId], references: [id])
+
+  @@unique([requerimientoId, proveedorId])
+  @@map("ofertas")
+}
+
+model Adjudicacion {
+  id                  String   @id @default(cuid())
+  requerimientoId     String   @unique
+  proveedorId         String
+  precioFinal         Int
+  plazoDias           Int
+  condicionesPagoDias Int
+  garantiaMeses       Int
+  poId                String
+  confirmada          Boolean  @default(false)
+  revisionLegal       Boolean  @default(false)
+  firmado             Boolean  @default(false)
+  notificarPerdedores Boolean  @default(true)
+  createdAt           DateTime @default(now())
+
+  requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
+
+  @@map("adjudicaciones")
+}
+
+// ---------------------------------------------------------------------------
+// Contratos, seguimiento
+// ---------------------------------------------------------------------------
+
+model Contrato {
+  id              String         @id @default(cuid())
+  companyId       String
+  requerimientoId String?
+  tipo            TipoContrato
+  proveedorNombre String
+  categoria       String
+  monto           Int
+  vigenciaInicio  DateTime
+  vigenciaFin     DateTime
+  estado          EstadoContrato @default(ACTIVO)
+  createdAt       DateTime       @default(now())
+
+  company       Company           @relation(fields: [companyId], references: [id])
+  requerimiento Requerimiento?    @relation(fields: [requerimientoId], references: [id])
+  hitos         HitoSeguimiento[]
+  pagos         PagoPO[]
+
+  @@map("contratos")
+}
+
+model HitoSeguimiento {
+  id           String     @id @default(cuid())
+  contratoId   String
+  label        String
+  comprometido DateTime
+  real         DateTime?
+  estado       EstadoHito @default(PENDIENTE)
+  orden        Int        @default(0)
+
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  @@map("hitos_seguimiento")
+}
+
+// ---------------------------------------------------------------------------
+// Disputas
+// ---------------------------------------------------------------------------
+
+model Disputa {
+  id           String        @id @default(cuid())
+  companyId    String
+  poReferencia String
+  proveedorId  String?
+  severidad    Severidad     @default(MEDIA)
+  estado       EstadoDisputa @default(ABIERTA)
+  mediadorId   String?
+  createdAt    DateTime      @default(now())
+  resueltoAt   DateTime?
+
+  company   Company           @relation(fields: [companyId], references: [id])
+  proveedor ProveedorProfile? @relation(fields: [proveedorId], references: [id])
+  mediador  User?             @relation("Mediador", fields: [mediadorId], references: [id])
+  mensajes  MensajeDisputa[]
+
+  @@map("disputas")
+}
+
+model MensajeDisputa {
+  id        String   @id @default(cuid())
+  disputaId String
+  autorId   String?
+  autor     String
+  texto     String
+  createdAt DateTime @default(now())
+
+  disputa   Disputa @relation(fields: [disputaId], references: [id], onDelete: Cascade)
+  autorUser User?   @relation(fields: [autorId], references: [id])
+
+  @@map("mensajes_disputa")
+}
+
+// ---------------------------------------------------------------------------
+// Invitaciones, pagos
+// ---------------------------------------------------------------------------
+
+model Invitacion {
+  id              String           @id @default(cuid())
+  requerimientoId String?
+  proveedorId     String
+  companyId       String
+  categoria       String
+  fechaLimite     DateTime
+  estado          EstadoInvitacion @default(NUEVA)
+  createdAt       DateTime         @default(now())
+
+  requerimiento Requerimiento?   @relation(fields: [requerimientoId], references: [id])
+  proveedor     ProveedorProfile @relation(fields: [proveedorId], references: [id])
+  company       Company          @relation(fields: [companyId], references: [id])
+
+  @@map("invitaciones")
+}
+
+model PagoPO {
+  id               String     @id @default(cuid())
+  contratoId       String
+  proveedorId      String
+  monto            Int
+  fechaEmision     DateTime
+  fechaPagoPactada DateTime
+  estado           EstadoPago @default(PENDIENTE)
+  disputaAbierta   Boolean    @default(false)
+
+  contrato  Contrato         @relation(fields: [contratoId], references: [id])
+  proveedor ProveedorProfile @relation(fields: [proveedorId], references: [id])
+
+  @@map("pagos_po")
+}
+
+// ---------------------------------------------------------------------------
+// Notificaciones, auditoría
+// ---------------------------------------------------------------------------
+
+model Notificacion {
+  id        String           @id @default(cuid())
+  userId    String
+  tipo      TipoNotificacion
+  titulo    String
+  desc      String
+  leida     Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notificaciones")
+}
+
+model AuditLogEntry {
+  id        String   @id @default(cuid())
+  usuarioId String?
+  usuario   String
+  accion    String
+  detalle   String
+  motivo    String?
+  createdAt DateTime @default(now())
+
+  usuarioUser User? @relation(fields: [usuarioId], references: [id])
+
+  @@map("audit_log")
+}
+
+// ---------------------------------------------------------------------------
+// Panel interno
+// ---------------------------------------------------------------------------
+
+model CasoConsultor {
+  id          String     @id @default(cuid())
+  consultorId String
+  companyId   String
+  tipo        String
+  prioridad   Prioridad  @default(MEDIA)
+  estado      EstadoCaso @default(PENDIENTE)
+  slaVencido  Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+
+  consultor User    @relation("Consultor", fields: [consultorId], references: [id])
+  company   Company @relation(fields: [companyId], references: [id])
+
+  @@map("casos_consultor")
+}
+
+model BenchmarkEntry {
+  id             String  @id @default(cuid())
+  categoria      String
+  region         String
+  precioPromedio Int
+  muestras       Int
+  outlier        Boolean @default(false)
+
+  @@map("benchmark_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Subasta / negociación en vivo (respaldo persistente del estado en vivo)
+// ---------------------------------------------------------------------------
+
+model AuctionSession {
+  id              String        @id @default(cuid())
+  requerimientoId String        @unique
+  status          EstadoSubasta @default(INACTIVA)
+  deadline        DateTime?
+
+  requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
+  pujas         Puja[]
+
+  @@map("auction_sessions")
+}
+
+model Puja {
+  id              String   @id @default(cuid())
+  sessionId       String
+  proveedorId     String
+  proveedorNombre String
+  montoInicial    Int
+  monto           Int
+  updatedAt       DateTime @updatedAt
+
+  session AuctionSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, proveedorId])
+  @@map("pujas")
+}
