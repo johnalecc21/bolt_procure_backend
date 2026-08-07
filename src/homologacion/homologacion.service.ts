@@ -105,6 +105,7 @@ export class HomologacionService {
 
     const alertas: string[] = [];
     let score = 70;
+    let nitDetectado: string | null = null;
 
     for (const doc of homologacion.documentos) {
       if (!doc.storagePath) continue;
@@ -123,9 +124,11 @@ export class HomologacionService {
       }
       if (doc.nombre.toLowerCase().includes('nit') || doc.nombre.toLowerCase().includes('rut')) {
         const digitsOnly = text.replace(/[^0-9]/g, '');
-        if (!/\d{9,10}/.test(digitsOnly)) {
+        const match = digitsOnly.match(/\d{9,10}/);
+        if (!match) {
           alertas.push(`No se detectó un número de NIT/RUT válido en "${doc.nombre}".`);
         } else {
+          nitDetectado = match[0];
           score += 10;
         }
       }
@@ -146,7 +149,7 @@ export class HomologacionService {
 
     return this.prisma.homologacion.update({
       where: { proveedorId },
-      data: { estado, score, alertas, fechaSolicitud: new Date() },
+      data: { estado, score, alertas, nitDetectado, fechaSolicitud: new Date() },
       include: { documentos: true },
     });
   }

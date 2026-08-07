@@ -340,6 +340,8 @@ model Homologacion {
   alertas             String[]
   fechaSolicitud      DateTime           @default(now())
   proximaRevalidacion DateTime?
+  /// NIT/RUT number detected by OCR on the "RUT / NIT" document, for manual cross-check against RUES.
+  nitDetectado        String?
 
   proveedor  ProveedorProfile        @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
   documentos DocumentoHomologacion[]
