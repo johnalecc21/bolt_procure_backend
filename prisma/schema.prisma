@@ -353,6 +353,8 @@ model DocumentoHomologacion {
   nombre         String
   estado         EstadoDocumento @default(PENDIENTE)
   vigencia       DateTime?
+  /// Path within the `homologacion-documentos` Supabase Storage bucket, set once a file is actually uploaded.
+  storagePath    String?
 
   homologacion Homologacion @relation(fields: [homologacionId], references: [id], onDelete: Cascade)
 
