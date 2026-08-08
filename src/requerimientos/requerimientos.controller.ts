@@ -9,6 +9,7 @@ import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { UpdateEstadoDto } from './dto/update-estado.dto';
 import { InviteProveedoresDto } from './dto/invite-proveedores.dto';
+import { ExtenderPlazoDto } from './dto/extender-plazo.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('requerimientos')
@@ -40,6 +41,16 @@ export class RequerimientosController {
     @Body() dto: UpdateEstadoDto,
   ) {
     return this.service.updateEstado(user.companyId, id, dto.estado, user.email);
+  }
+
+  @Roles(Role.COMPRADOR, Role.ADMIN_CLIENTE)
+  @Patch(':id/extender-plazo')
+  extenderPlazo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ExtenderPlazoDto,
+  ) {
+    return this.service.extenderPlazo(user.companyId, id, dto.dias, user.email, dto.motivo);
   }
 
   @Post(':id/comentarios')

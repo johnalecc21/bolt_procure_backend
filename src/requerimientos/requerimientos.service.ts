@@ -76,6 +76,19 @@ export class RequerimientosService {
     return updated;
   }
 
+  async extenderPlazo(companyId: string, id: string, dias: number, actorNombre: string, motivo?: string) {
+    const req = await this.findOne(companyId, id);
+    const nuevaFecha = new Date(req.fechaLimite);
+    nuevaFecha.setDate(nuevaFecha.getDate() + dias);
+    const updated = await this.prisma.requerimiento.update({ where: { id }, data: { fechaLimite: nuevaFecha } });
+    await this.auditLog.log({
+      usuario: actorNombre,
+      accion: 'Plazo de licitación extendido',
+      detalle: `${id} +${dias} día(s)${motivo ? ` — ${motivo}` : ''}`,
+    });
+    return updated;
+  }
+
   async addComment(companyId: string, id: string, autor: string, texto: string) {
     await this.findOne(companyId, id);
     return this.prisma.comentarioRequerimiento.create({
