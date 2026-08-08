@@ -67,6 +67,7 @@ export class AdjudicacionService {
     });
     const proveedor = await this.prisma.proveedorProfile.findUniqueOrThrow({
       where: { id: adjudicacion.proveedorId },
+      include: { user: true },
     });
 
     const hoy = new Date();
@@ -98,6 +99,15 @@ export class AdjudicacionService {
       accion: 'Contrato firmado electrónicamente',
       detalle: `${requerimientoId} → ${proveedor.nombre}`,
     });
+
+    if (proveedor.user) {
+      await this.notificaciones.create(
+        proveedor.user.id,
+        'CONTRATO',
+        '¡Ganaste el proceso!',
+        `${requerimiento.titulo} fue adjudicado a tu empresa. Orden de compra ${adjudicacion.poId} — revisa el detalle en Mis Contratos.`,
+      );
+    }
 
     if (adjudicacion.notificarPerdedores) {
       const perdedores = await this.prisma.oferta.findMany({

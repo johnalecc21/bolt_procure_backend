@@ -6,11 +6,24 @@ import { ContratosService } from './contratos.service';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('contratos')
-@PortalOnly('CLIENTE')
 @Controller('contratos')
 export class ContratosController {
   constructor(private service: ContratosService) {}
 
+  // Registered before ':id' so "mine" isn't swallowed as a company-scoped contract id.
+  @PortalOnly('PROVEEDOR')
+  @Get('mine')
+  listMine(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.listMine(user.sub);
+  }
+
+  @PortalOnly('PROVEEDOR')
+  @Get('mine/:id')
+  findOneMine(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.service.findOneMine(user.sub, id);
+  }
+
+  @PortalOnly('CLIENTE')
   @Get()
   list(
     @CurrentUser() user: AuthenticatedUser,
@@ -20,6 +33,7 @@ export class ContratosController {
     return this.service.list(user.companyId, { categoria, query });
   }
 
+  @PortalOnly('CLIENTE')
   @Get(':id')
   findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.service.findOne(user.companyId, id);

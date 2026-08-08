@@ -32,4 +32,29 @@ export class ContratosService {
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
     return contrato;
   }
+
+  private async proveedorIdForUser(userId: string) {
+    const profile = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
+    if (!profile) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
+    return profile.id;
+  }
+
+  async listMine(userId: string) {
+    const proveedorId = await this.proveedorIdForUser(userId);
+    return this.prisma.contrato.findMany({
+      where: { requerimiento: { adjudicacion: { proveedorId } } },
+      orderBy: { vigenciaFin: 'asc' },
+      include: { hitos: { orderBy: { orden: 'asc' } }, company: true },
+    });
+  }
+
+  async findOneMine(userId: string, id: string) {
+    const proveedorId = await this.proveedorIdForUser(userId);
+    const contrato = await this.prisma.contrato.findFirst({
+      where: { id, requerimiento: { adjudicacion: { proveedorId } } },
+      include: { hitos: { orderBy: { orden: 'asc' } }, company: true },
+    });
+    if (!contrato) throw new NotFoundException('Contrato no encontrado.');
+    return contrato;
+  }
 }
