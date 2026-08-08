@@ -119,7 +119,8 @@ async function main() {
   await membership(anaConsultora.id, procureos.id);
   await membership(mateo.id, procureos.id);
 
-  // --- Matriz de aprobación (Acme) ------------------------------------------
+  // --- Matriz de aprobación (una por empresa — cada company necesita la suya,
+  // o la pantalla de Matriz de Aprobación no tiene nada que mostrar) ----------
   await prisma.matrizAprobacionRegla.deleteMany({ where: { companyId: acme.id } });
   await prisma.matrizAprobacionRegla.createMany({
     data: [
@@ -127,6 +128,14 @@ async function main() {
       { companyId: acme.id, montoMin: 10001, montoMax: 50000, aprobadores: 'Gerente de Compras', tipo: TipoRegla.UNICA },
       { companyId: acme.id, montoMin: 50001, montoMax: 200000, aprobadores: 'CFO', tipo: TipoRegla.SECUENCIAL },
       { companyId: acme.id, montoMin: 200001, montoMax: null, aprobadores: 'CEO + CFO', tipo: TipoRegla.SECUENCIAL },
+    ],
+  });
+  await prisma.matrizAprobacionRegla.deleteMany({ where: { companyId: techcorp.id } });
+  await prisma.matrizAprobacionRegla.createMany({
+    data: [
+      { companyId: techcorp.id, montoMin: 0, montoMax: 15000, aprobadores: 'Comprador', tipo: TipoRegla.UNICA },
+      { companyId: techcorp.id, montoMin: 15001, montoMax: 100000, aprobadores: 'Admin de Cuenta', tipo: TipoRegla.UNICA },
+      { companyId: techcorp.id, montoMin: 100001, montoMax: null, aprobadores: 'CEO', tipo: TipoRegla.SECUENCIAL },
     ],
   });
 
