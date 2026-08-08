@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { EstadoHomologacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpsertOfertaDto } from './dto/upsert-oferta.dto';
 
@@ -56,6 +57,10 @@ export class OfertasService {
 
   async enviar(userId: string, requerimientoId: string) {
     const proveedorId = await this.proveedorIdForUser(userId);
+    const homologacion = await this.prisma.homologacion.findUnique({ where: { proveedorId } });
+    if (homologacion?.estado !== EstadoHomologacion.APROBADO) {
+      throw new ForbiddenException('Tu homologación debe estar aprobada para poder enviar ofertas.');
+    }
     const oferta = await this.prisma.oferta.findUnique({
       where: { requerimientoId_proveedorId: { requerimientoId, proveedorId } },
     });

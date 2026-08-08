@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EstadoHomologacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const PALETTE = [
@@ -15,6 +16,10 @@ export class ProveedoresService {
   list(params?: { categoria?: string; minScore?: number; query?: string }) {
     return this.prisma.proveedorProfile.findMany({
       where: {
+        // Only providers with an approved homologacion are visible/selectable here —
+        // a provider stuck in zona gris or without homologacion has no business
+        // being invited to bid, even though the invitation endpoint also enforces this.
+        homologacion: { estado: EstadoHomologacion.APROBADO },
         ...(params?.categoria ? { categorias: { has: params.categoria } } : {}),
         ...(params?.minScore ? { score: { gte: params.minScore } } : {}),
         ...(params?.query

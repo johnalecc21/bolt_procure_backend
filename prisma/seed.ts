@@ -177,6 +177,7 @@ async function main() {
   }
 
   // Zona gris queue examples for Compliance
+  const zonaGrisIds = ['P-011', 'P-006'];
   for (const [pid, alertas] of [
     ['P-011', ['Certificación ISO 9001 vencida', 'Litigio menor reportado en registro público']],
     ['P-006', ['Antigüedad menor a 2 años']],
@@ -186,6 +187,29 @@ async function main() {
       update: {},
       create: { proveedorId: pid, estado: 'ZONA_GRIS', score: 62, alertas: [...alertas] },
     });
+  }
+
+  // Every other seeded provider needs a real, approved homologacion too — otherwise
+  // they're invisible in the directory and can't legally be invited to bid, now that
+  // invitations require an approved homologacion.
+  for (const p of proveedoresSeed) {
+    if (p.id === 'P-001' || (zonaGrisIds as string[]).includes(p.id)) continue;
+    const homologacion = await prisma.homologacion.upsert({
+      where: { proveedorId: p.id },
+      update: {},
+      create: { proveedorId: p.id, estado: 'APROBADO', score: p.score, fechaSolicitud: new Date('2024-01-15'), proximaRevalidacion: new Date('2026-01-15') },
+    });
+    const docsCount = await prisma.documentoHomologacion.count({ where: { homologacionId: homologacion.id } });
+    if (docsCount === 0) {
+      await prisma.documentoHomologacion.createMany({
+        data: [
+          { homologacionId: homologacion.id, nombre: 'RUT / NIT', estado: 'VALIDADO' },
+          { homologacionId: homologacion.id, nombre: 'Estados financieros', estado: 'VALIDADO' },
+          { homologacionId: homologacion.id, nombre: 'Certificado ISO / BASC / ESG', estado: 'VALIDADO' },
+          { homologacionId: homologacion.id, nombre: 'Referencias comerciales', estado: 'VALIDADO' },
+        ],
+      });
+    }
   }
 
   // --- Requerimientos ----------------------------------------------------

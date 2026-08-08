@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoRequerimiento, Role, TipoAprobacion } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { EstadoHomologacion, EstadoRequerimiento, Role, TipoAprobacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
@@ -90,20 +90,37 @@ export class RequerimientosService {
 
   async invitarProveedores(companyId: string, id: string, proveedorIds: string[]) {
     const req = await this.findOne(companyId, id);
+
+    // Defense in depth: the directory UI only lists approved providers, but this
+    // endpoint can be called directly, so re-check here regardless of what was sent.
+    const candidatos = await this.prisma.proveedorProfile.findMany({
+      where: { id: { in: proveedorIds } },
+      include: { homologacion: true },
+    });
+    const elegibles = candidatos.filter((p) => p.homologacion?.estado === EstadoHomologacion.APROBADO);
+    const excluidos = candidatos.filter((p) => p.homologacion?.estado !== EstadoHomologacion.APROBADO);
+    if (elegibles.length === 0) {
+      throw new BadRequestException('Ninguno de los proveedores seleccionados tiene homologación aprobada.');
+    }
+
     await this.prisma.$transaction([
-      ...proveedorIds.map((proveedorId) =>
+      ...elegibles.map((p) =>
         this.prisma.invitacion.create({
-          data: { companyId, proveedorId, requerimientoId: id, categoria: req.categoria, fechaLimite: req.fechaLimite },
+          data: { companyId, proveedorId: p.id, requerimientoId: id, categoria: req.categoria, fechaLimite: req.fechaLimite },
         }),
       ),
       this.prisma.requerimiento.update({
         where: { id },
         data: {
-          proveedoresInvitados: { increment: proveedorIds.length },
+          proveedoresInvitados: { increment: elegibles.length },
           estado: EstadoRequerimiento.EN_LICITACION,
         },
       }),
     ]);
-    return this.findOne(companyId, id);
+    const actualizado = await this.findOne(companyId, id);
+    return {
+      ...actualizado,
+      excluidosPorHomologacion: excluidos.map((p) => ({ id: p.id, nombre: p.nombre })),
+    };
   }
 }
