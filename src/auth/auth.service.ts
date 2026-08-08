@@ -71,7 +71,7 @@ export class AuthService {
         .map((w) => w[0]?.toUpperCase())
         .join('') || 'PV';
     const palette = [
-      'oklch(0.60 0.22 280)',
+      'oklch(0.46 0.14 246)',
       'oklch(0.60 0.18 155)',
       'oklch(0.70 0.18 68)',
       'oklch(0.65 0.20 200)',
