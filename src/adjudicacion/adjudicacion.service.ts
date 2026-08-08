@@ -74,7 +74,7 @@ export class AdjudicacionService {
     const vigenciaFin = new Date(hoy);
     vigenciaFin.setFullYear(vigenciaFin.getFullYear() + 1);
 
-    await this.prisma.$transaction([
+    const [, , contrato] = await this.prisma.$transaction([
       this.prisma.adjudicacion.update({ where: { requerimientoId }, data: { firmado: true } }),
       this.prisma.requerimiento.update({
         where: { id: requerimientoId },
@@ -93,6 +93,21 @@ export class AdjudicacionService {
         },
       }),
     ]);
+
+    // Seed a sensible default delivery timeline off the agreed plazoDias so every
+    // signed contract starts with real tracking — the client can rename, add,
+    // remove, or reschedule these afterward from the Seguimiento screen.
+    const entrega = new Date(hoy);
+    entrega.setDate(entrega.getDate() + adjudicacion.plazoDias);
+    const cierre = new Date(entrega);
+    cierre.setDate(cierre.getDate() + 5);
+    await this.prisma.hitoSeguimiento.createMany({
+      data: [
+        { contratoId: contrato.id, label: 'Inicio del contrato', comprometido: hoy, orden: 0 },
+        { contratoId: contrato.id, label: 'Entrega', comprometido: entrega, orden: 1 },
+        { contratoId: contrato.id, label: 'Cierre y conformidad', comprometido: cierre, orden: 2 },
+      ],
+    });
 
     await this.auditLog.log({
       usuario: actorNombre,
