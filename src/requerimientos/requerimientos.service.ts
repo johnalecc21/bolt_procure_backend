@@ -13,6 +13,35 @@ export class RequerimientosService {
     private notificaciones: NotificacionesService,
   ) {}
 
+  // Notifies whoever can act right now: for UNICA that's everyone in the
+  // role list (any one of them can resolve it); for SECUENCIAL only the
+  // role at the current step, since the rest haven't got a turn yet.
+  async notificarAprobadores(
+    companyId: string,
+    rolesRequeridos: Role[],
+    tipoRegla: TipoRegla,
+    pasoActual: number,
+    tituloRequerimiento: string,
+    monto: number,
+  ) {
+    const roles = tipoRegla === TipoRegla.SECUENCIAL ? [rolesRequeridos[pasoActual]] : rolesRequeridos;
+    if (!roles.length) return;
+    const memberships = await this.prisma.companyMembership.findMany({
+      where: { companyId, activo: true, user: { role: { in: roles }, activo: true } },
+      include: { user: true },
+    });
+    await Promise.all(
+      memberships.map((m) =>
+        this.notificaciones.create(
+          m.user.id,
+          'APROBACION',
+          'Aprobación pendiente',
+          `"${tituloRequerimiento}" ($${monto.toLocaleString('es-CO')}) necesita tu aprobación.`,
+        ),
+      ),
+    );
+  }
+
   // Defense in depth: the directory UI only lists approved providers, but the
   // endpoints below can be called directly, so re-check eligibility here
   // regardless of what was sent.
@@ -68,6 +97,9 @@ export class RequerimientosService {
       ? await this.filtrarElegibles(dto.proveedorIds)
       : { elegibles: [], excluidos: [] };
 
+    let rolesRequeridosCreados: Role[] = [];
+    let tipoReglaCreado: TipoRegla = TipoRegla.UNICA;
+
     const requerimiento = await this.prisma.$transaction(async (tx) => {
       const requerimiento = await tx.requerimiento.create({
         data: {
@@ -98,6 +130,8 @@ export class RequerimientosService {
       const rolesRequeridos = regla && regla.roles.length > 0
         ? regla.roles
         : [Role.ADMIN_CLIENTE, Role.APROBADOR_CFO];
+      rolesRequeridosCreados = rolesRequeridos;
+      tipoReglaCreado = regla?.tipo ?? TipoRegla.UNICA;
       await tx.aprobacion.create({
         data: {
           requerimientoId: requerimiento.id,
@@ -105,7 +139,7 @@ export class RequerimientosService {
           monto: dto.montoEstimado,
           urgente: false,
           rolesRequeridos,
-          tipoRegla: regla?.tipo ?? TipoRegla.UNICA,
+          tipoRegla: tipoReglaCreado,
         },
       });
       // The shortlist chosen while drafting is staged, not sent — providers
@@ -124,6 +158,15 @@ export class RequerimientosService {
       }
       return requerimiento;
     });
+
+    await this.notificarAprobadores(
+      companyId,
+      rolesRequeridosCreados,
+      tipoReglaCreado,
+      0,
+      requerimiento.titulo,
+      requerimiento.montoEstimado,
+    );
 
     return { ...requerimiento, excluidosPorHomologacion: excluidos.map((p) => ({ id: p.id, nombre: p.nombre })) };
   }

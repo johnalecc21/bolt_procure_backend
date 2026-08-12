@@ -3,6 +3,7 @@ import { EstadoAprobacion, EstadoRequerimiento, Role, TipoAprobacion, TipoRegla 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { RequerimientosService } from '../requerimientos/requerimientos.service';
 
 @Injectable()
 export class AprobacionesService {
@@ -10,6 +11,7 @@ export class AprobacionesService {
     private prisma: PrismaService,
     private auditLog: AuditLogService,
     private notificaciones: NotificacionesService,
+    private requerimientos: RequerimientosService,
   ) {}
 
   // Sends the shortlist staged at creation time (Invitacion rows with
@@ -132,6 +134,14 @@ export class AprobacionesService {
         accion: 'Aprobación (paso intermedio)',
         detalle: `${aprobacion.requerimiento.titulo} — paso ${aprobacion.pasoActual + 1} de ${aprobacion.rolesRequeridos.length}`,
       });
+      await this.requerimientos.notificarAprobadores(
+        companyId,
+        aprobacion.rolesRequeridos,
+        aprobacion.tipoRegla,
+        aprobacion.pasoActual + 1,
+        aprobacion.requerimiento.titulo,
+        aprobacion.monto,
+      );
     }
     return { ok: true };
   }
