@@ -192,6 +192,7 @@ model User {
   proveedorProfile          ProveedorProfile?
   requerimientosSolicitados Requerimiento[]     @relation("Solicitante")
   aprobacionesResueltas     Aprobacion[]        @relation("ResueltoPor")
+  aprobacionPasos           AprobacionPaso[]
   notificaciones            Notificacion[]
   auditLogs                 AuditLogEntry[]
   casosConsultor            CasoConsultor[]     @relation("Consultor")
@@ -291,8 +292,25 @@ model Aprobacion {
 
   requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
   resueltoPor   User?         @relation("ResueltoPor", fields: [resueltoPorId], references: [id])
+  pasos         AprobacionPaso[]
 
   @@map("aprobaciones")
+}
+
+// One row per role that actually approved a step — the real audit trail behind
+// Aprobacion.pasoActual. For UNICA there's exactly one row (whoever closed it
+// out); for SECUENCIAL there's one per role in the chain, in order.
+model AprobacionPaso {
+  id            String   @id @default(cuid())
+  aprobacionId  String
+  rol           Role
+  aprobadoPorId String
+  aprobadoAt    DateTime @default(now())
+
+  aprobacion  Aprobacion @relation(fields: [aprobacionId], references: [id], onDelete: Cascade)
+  aprobadoPor User       @relation(fields: [aprobadoPorId], references: [id])
+
+  @@map("aprobacion_pasos")
 }
 
 model MatrizAprobacionRegla {

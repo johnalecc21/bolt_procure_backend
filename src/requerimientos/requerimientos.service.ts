@@ -31,6 +31,16 @@ export class RequerimientosService {
         documentos: true,
         adjudicacion: true,
         ofertas: { include: { proveedor: true } },
+        aprobaciones: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            resueltoPor: { select: { nombre: true } },
+            pasos: {
+              orderBy: { aprobadoAt: 'asc' },
+              include: { aprobadoPor: { select: { nombre: true } } },
+            },
+          },
+        },
       },
     });
     if (!req) throw new NotFoundException('Requerimiento no encontrado.');

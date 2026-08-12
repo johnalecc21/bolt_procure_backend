@@ -58,6 +58,9 @@ export class AprobacionesService {
 
     if (esUltimoPaso) {
       await this.prisma.$transaction([
+        this.prisma.aprobacionPaso.create({
+          data: { aprobacionId: id, rol: resueltoPorRole, aprobadoPorId: resueltoPorId },
+        }),
         this.prisma.aprobacion.update({
           where: { id },
           data: { estado: EstadoAprobacion.APROBADA, resueltoPorId, resueltoAt: new Date() },
@@ -74,10 +77,15 @@ export class AprobacionesService {
         detalle: aprobacion.requerimiento.titulo,
       });
     } else {
-      await this.prisma.aprobacion.update({
-        where: { id },
-        data: { pasoActual: { increment: 1 } },
-      });
+      await this.prisma.$transaction([
+        this.prisma.aprobacionPaso.create({
+          data: { aprobacionId: id, rol: resueltoPorRole, aprobadoPorId: resueltoPorId },
+        }),
+        this.prisma.aprobacion.update({
+          where: { id },
+          data: { pasoActual: { increment: 1 } },
+        }),
+      ]);
       await this.auditLog.log({
         usuarioId: resueltoPorId,
         usuario: actorNombre,
