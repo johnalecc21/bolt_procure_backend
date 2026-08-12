@@ -47,4 +47,9 @@ export class CreateRequerimientoDto {
   @Type(() => EspecificacionDto)
   @IsOptional()
   especificaciones?: EspecificacionDto[];
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  proveedorIds?: string[];
 }

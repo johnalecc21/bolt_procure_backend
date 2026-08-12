@@ -515,6 +515,11 @@ model Invitacion {
   categoria       String
   fechaLimite     DateTime
   estado          EstadoInvitacion @default(NUEVA)
+  // False while the requerimiento is still pending approval — the provider
+  // shortlist chosen at creation time is preselected but not yet sent.
+  // Flips to true (and the provider gets notified) once the requerimiento
+  // is approved, or immediately for invitations added after approval.
+  enviada         Boolean          @default(false)
   createdAt       DateTime         @default(now())
 
   requerimiento Requerimiento?   @relation(fields: [requerimientoId], references: [id])

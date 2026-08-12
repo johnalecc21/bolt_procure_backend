@@ -1,14 +1,51 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoAprobacion, EstadoRequerimiento, Role, TipoRegla } from '@prisma/client';
+import { EstadoAprobacion, EstadoRequerimiento, Role, TipoAprobacion, TipoRegla } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 @Injectable()
 export class AprobacionesService {
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
+    private notificaciones: NotificacionesService,
   ) {}
+
+  // Sends the shortlist staged at creation time (Invitacion rows with
+  // enviada:false) once the requerimiento clears approval — this is the
+  // moment providers actually find out they were invited.
+  private async enviarInvitacionesPendientes(requerimientoId: string, tituloRequerimiento: string) {
+    const pendientes = await this.prisma.invitacion.findMany({
+      where: { requerimientoId, enviada: false },
+      include: { proveedor: { include: { user: true } } },
+    });
+    if (pendientes.length === 0) return;
+
+    await this.prisma.$transaction([
+      this.prisma.invitacion.updateMany({
+        where: { id: { in: pendientes.map((i) => i.id) } },
+        data: { enviada: true },
+      }),
+      this.prisma.requerimiento.update({
+        where: { id: requerimientoId },
+        data: { proveedoresInvitados: { increment: pendientes.length } },
+      }),
+    ]);
+
+    await Promise.all(
+      pendientes
+        .filter((i) => i.proveedor.user)
+        .map((i) =>
+          this.notificaciones.create(
+            i.proveedor.user!.id,
+            'PROVEEDOR',
+            'Nueva invitación a licitar',
+            `Fuiste invitado a participar en "${tituloRequerimiento}".`,
+          ),
+        ),
+    );
+  }
 
   // Matches the Matriz de Aprobación semantics: UNICA resolves as soon as
   // ANY of the required roles approves; SECUENCIAL requires each required
@@ -76,6 +113,9 @@ export class AprobacionesService {
         accion: 'Aprobación',
         detalle: aprobacion.requerimiento.titulo,
       });
+      if (aprobacion.tipo === TipoAprobacion.SALIDA_LICITACION) {
+        await this.enviarInvitacionesPendientes(aprobacion.requerimientoId, aprobacion.requerimiento.titulo);
+      }
     } else {
       await this.prisma.$transaction([
         this.prisma.aprobacionPaso.create({

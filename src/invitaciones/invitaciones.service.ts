@@ -15,7 +15,7 @@ export class InvitacionesService {
   async listMine(userId: string) {
     const proveedorId = await this.proveedorIdForUser(userId);
     return this.prisma.invitacion.findMany({
-      where: { proveedorId },
+      where: { proveedorId, enviada: true },
       include: { company: true, requerimiento: { select: { titulo: true } } },
       orderBy: { fechaLimite: 'asc' },
     });

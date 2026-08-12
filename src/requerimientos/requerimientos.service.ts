@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { EstadoHomologacion, EstadoRequerimiento, Prisma, Role, TipoAprobacion, TipoRegla } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
 
 @Injectable()
@@ -9,7 +10,22 @@ export class RequerimientosService {
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
+    private notificaciones: NotificacionesService,
   ) {}
+
+  // Defense in depth: the directory UI only lists approved providers, but the
+  // endpoints below can be called directly, so re-check eligibility here
+  // regardless of what was sent.
+  private async filtrarElegibles(proveedorIds: string[]) {
+    const candidatos = await this.prisma.proveedorProfile.findMany({
+      where: { id: { in: proveedorIds } },
+      include: { homologacion: true },
+    });
+    return {
+      elegibles: candidatos.filter((p) => p.homologacion?.estado === EstadoHomologacion.APROBADO),
+      excluidos: candidatos.filter((p) => p.homologacion?.estado !== EstadoHomologacion.APROBADO),
+    };
+  }
 
   async list(companyId: string, userId: string, role: Role) {
     return this.prisma.requerimiento.findMany({
@@ -48,7 +64,11 @@ export class RequerimientosService {
   }
 
   async create(companyId: string, solicitanteId: string, dto: CreateRequerimientoDto) {
-    return this.prisma.$transaction(async (tx) => {
+    const { elegibles, excluidos } = dto.proveedorIds?.length
+      ? await this.filtrarElegibles(dto.proveedorIds)
+      : { elegibles: [], excluidos: [] };
+
+    const requerimiento = await this.prisma.$transaction(async (tx) => {
       const requerimiento = await tx.requerimiento.create({
         data: {
           companyId,
@@ -88,8 +108,24 @@ export class RequerimientosService {
           tipoRegla: regla?.tipo ?? TipoRegla.UNICA,
         },
       });
+      // The shortlist chosen while drafting is staged, not sent — providers
+      // only find out once the requerimiento actually clears approval.
+      if (elegibles.length > 0) {
+        await tx.invitacion.createMany({
+          data: elegibles.map((p) => ({
+            companyId,
+            proveedorId: p.id,
+            requerimientoId: requerimiento.id,
+            categoria: dto.categoria,
+            fechaLimite: new Date(dto.fechaLimite),
+            enviada: false,
+          })),
+        });
+      }
       return requerimiento;
     });
+
+    return { ...requerimiento, excluidosPorHomologacion: excluidos.map((p) => ({ id: p.id, nombre: p.nombre })) };
   }
 
   async updateEstado(companyId: string, id: string, estado: EstadoRequerimiento, actorNombre: string) {
@@ -128,27 +164,36 @@ export class RequerimientosService {
     return this.prisma.documentoRequerimiento.create({ data: { requerimientoId: id, nombre } });
   }
 
+  // Adds providers beyond the shortlist chosen at creation — used any time
+  // after a requerimiento is out, so invitations here are sent immediately.
   async invitarProveedores(companyId: string, id: string, proveedorIds: string[]) {
     const req = await this.findOne(companyId, id);
-
-    // Defense in depth: the directory UI only lists approved providers, but this
-    // endpoint can be called directly, so re-check here regardless of what was sent.
-    const candidatos = await this.prisma.proveedorProfile.findMany({
-      where: { id: { in: proveedorIds } },
-      include: { homologacion: true },
+    const existentes = await this.prisma.invitacion.findMany({
+      where: { requerimientoId: id, proveedorId: { in: proveedorIds } },
+      select: { proveedorId: true },
     });
-    const elegibles = candidatos.filter((p) => p.homologacion?.estado === EstadoHomologacion.APROBADO);
-    const excluidos = candidatos.filter((p) => p.homologacion?.estado !== EstadoHomologacion.APROBADO);
+    const yaInvitados = new Set(existentes.map((i) => i.proveedorId));
+
+    const { elegibles: elegiblesTodos, excluidos } = await this.filtrarElegibles(proveedorIds);
+    const elegibles = elegiblesTodos.filter((p) => !yaInvitados.has(p.id));
+    if (elegibles.length === 0 && excluidos.length === 0) {
+      throw new BadRequestException('Los proveedores seleccionados ya fueron invitados a este proceso.');
+    }
     if (elegibles.length === 0) {
       throw new BadRequestException('Ninguno de los proveedores seleccionados tiene homologación aprobada.');
     }
 
     await this.prisma.$transaction([
-      ...elegibles.map((p) =>
-        this.prisma.invitacion.create({
-          data: { companyId, proveedorId: p.id, requerimientoId: id, categoria: req.categoria, fechaLimite: req.fechaLimite },
-        }),
-      ),
+      this.prisma.invitacion.createMany({
+        data: elegibles.map((p) => ({
+          companyId,
+          proveedorId: p.id,
+          requerimientoId: id,
+          categoria: req.categoria,
+          fechaLimite: req.fechaLimite,
+          enviada: true,
+        })),
+      }),
       this.prisma.requerimiento.update({
         where: { id },
         data: {
@@ -157,6 +202,24 @@ export class RequerimientosService {
         },
       }),
     ]);
+
+    const elegiblesConUser = await this.prisma.proveedorProfile.findMany({
+      where: { id: { in: elegibles.map((p) => p.id) } },
+      include: { user: true },
+    });
+    await Promise.all(
+      elegiblesConUser
+        .filter((p) => p.user)
+        .map((p) =>
+          this.notificaciones.create(
+            p.user!.id,
+            'PROVEEDOR',
+            'Nueva invitación a licitar',
+            `Fuiste invitado a participar en "${req.titulo}".`,
+          ),
+        ),
+    );
+
     const actualizado = await this.findOne(companyId, id);
     return {
       ...actualizado,
