@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoHomologacion } from '@prisma/client';
+import { EstadoHomologacion, EstadoInvitacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpsertOfertaDto } from './dto/upsert-oferta.dto';
 
@@ -18,6 +18,60 @@ export class OfertasService {
     const profile = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
     return profile.id;
+  }
+
+  // The provider's own in-progress board: every proceso they've accepted to
+  // bid on (declined/not-yet-accepted invitations don't belong here — those
+  // live in Bandeja de Invitaciones), paired with whatever offer state they
+  // have for it, draft or already sent. Also picks up any oferta row that
+  // exists without a matching accepted invitación — shouldn't normally
+  // happen, but a provider with a real offer on file should never be told
+  // there's nothing to see.
+  async listMine(userId: string) {
+    const proveedorId = await this.proveedorIdForUser(userId);
+    const [invitacionesAceptadas, ofertas] = await Promise.all([
+      this.prisma.invitacion.findMany({
+        where: {
+          proveedorId,
+          enviada: true,
+          estado: { in: [EstadoInvitacion.VISTA, EstadoInvitacion.RESPONDIDA] },
+        },
+        include: { company: true, requerimiento: { select: { titulo: true, categoria: true } } },
+      }),
+      this.prisma.oferta.findMany({
+        where: { proveedorId },
+        include: { requerimiento: { include: { company: true } } },
+      }),
+    ]);
+
+    const porRequerimiento = new Map<
+      string,
+      { requerimientoId: string; titulo: string; cliente: string; categoria: string; fechaLimite: Date; oferta: { enviada: boolean; precioTotal: number } | null }
+    >();
+    for (const inv of invitacionesAceptadas) {
+      if (!inv.requerimientoId) continue;
+      porRequerimiento.set(inv.requerimientoId, {
+        requerimientoId: inv.requerimientoId,
+        titulo: inv.requerimiento?.titulo ?? '',
+        cliente: inv.company.nombre,
+        categoria: inv.requerimiento?.categoria ?? inv.categoria,
+        fechaLimite: inv.fechaLimite,
+        oferta: null,
+      });
+    }
+    for (const o of ofertas) {
+      porRequerimiento.set(o.requerimientoId, {
+        requerimientoId: o.requerimientoId,
+        titulo: o.requerimiento.titulo,
+        cliente: o.requerimiento.company.nombre,
+        categoria: o.requerimiento.categoria,
+        fechaLimite: o.requerimiento.fechaLimite,
+        oferta: { enviada: o.enviada, precioTotal: o.precioTotal },
+      });
+    }
+    return Array.from(porRequerimiento.values()).sort(
+      (a, b) => a.fechaLimite.getTime() - b.fechaLimite.getTime(),
+    );
   }
 
   async mine(userId: string, requerimientoId: string) {

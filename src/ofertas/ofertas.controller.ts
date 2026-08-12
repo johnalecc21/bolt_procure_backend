@@ -24,6 +24,12 @@ export class OfertasController {
   }
 
   @PortalOnly('PROVEEDOR')
+  @Get('mine')
+  listMine(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.listMine(user.sub);
+  }
+
+  @PortalOnly('PROVEEDOR')
   @Get('mine/:requerimientoId')
   mine(@CurrentUser() user: AuthenticatedUser, @Param('requerimientoId') requerimientoId: string) {
     return this.service.mine(user.sub, requerimientoId);
