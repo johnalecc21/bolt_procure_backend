@@ -446,6 +446,11 @@ model Contrato {
   vigenciaFin     DateTime
   estado          EstadoContrato @default(ACTIVO)
   createdAt       DateTime       @default(now())
+  // When the company attaches their own PO/contract file, this points at it in
+  // the `contratos-documentos` Supabase Storage bucket — null means whoever
+  // downloads this contract gets the Procurex-generated template instead.
+  archivoNombre       String?
+  archivoStoragePath  String?
 
   company       Company           @relation(fields: [companyId], references: [id])
   requerimiento Requerimiento?    @relation(fields: [requerimientoId], references: [id])
