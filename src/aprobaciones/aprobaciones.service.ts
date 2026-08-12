@@ -44,6 +44,7 @@ export class AprobacionesService {
             'PROVEEDOR',
             'Nueva invitación a licitar',
             `Fuiste invitado a participar en "${tituloRequerimiento}".`,
+            '/proveedor/invitaciones',
           ),
         ),
     );
@@ -141,6 +142,7 @@ export class AprobacionesService {
         aprobacion.pasoActual + 1,
         aprobacion.requerimiento.titulo,
         aprobacion.monto,
+        aprobacion.id,
       );
     }
     return { ok: true };

@@ -13,8 +13,8 @@ export class NotificacionesService {
     });
   }
 
-  create(userId: string, tipo: TipoNotificacion, titulo: string, desc: string) {
-    return this.prisma.notificacion.create({ data: { userId, tipo, titulo, desc } });
+  create(userId: string, tipo: TipoNotificacion, titulo: string, desc: string, link?: string) {
+    return this.prisma.notificacion.create({ data: { userId, tipo, titulo, desc, link } });
   }
 
   async markAsRead(userId: string, id: string) {

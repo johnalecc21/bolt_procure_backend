@@ -23,6 +23,7 @@ export class RequerimientosService {
     pasoActual: number,
     tituloRequerimiento: string,
     monto: number,
+    aprobacionId: string,
   ) {
     const roles = tipoRegla === TipoRegla.SECUENCIAL ? [rolesRequeridos[pasoActual]] : rolesRequeridos;
     if (!roles.length) return;
@@ -37,6 +38,7 @@ export class RequerimientosService {
           'APROBACION',
           'Aprobación pendiente',
           `"${tituloRequerimiento}" ($${monto.toLocaleString('es-CO')}) necesita tu aprobación.`,
+          `/cliente/aprobaciones?highlight=${aprobacionId}`,
         ),
       ),
     );
@@ -99,6 +101,7 @@ export class RequerimientosService {
 
     let rolesRequeridosCreados: Role[] = [];
     let tipoReglaCreado: TipoRegla = TipoRegla.UNICA;
+    let aprobacionIdCreada = '';
 
     const requerimiento = await this.prisma.$transaction(async (tx) => {
       const requerimiento = await tx.requerimiento.create({
@@ -132,7 +135,7 @@ export class RequerimientosService {
         : [Role.ADMIN_CLIENTE, Role.APROBADOR_CFO];
       rolesRequeridosCreados = rolesRequeridos;
       tipoReglaCreado = regla?.tipo ?? TipoRegla.UNICA;
-      await tx.aprobacion.create({
+      const aprobacion = await tx.aprobacion.create({
         data: {
           requerimientoId: requerimiento.id,
           tipo: TipoAprobacion.SALIDA_LICITACION,
@@ -142,6 +145,7 @@ export class RequerimientosService {
           tipoRegla: tipoReglaCreado,
         },
       });
+      aprobacionIdCreada = aprobacion.id;
       // The shortlist chosen while drafting is staged, not sent — providers
       // only find out once the requerimiento actually clears approval.
       if (elegibles.length > 0) {
@@ -166,6 +170,7 @@ export class RequerimientosService {
       0,
       requerimiento.titulo,
       requerimiento.montoEstimado,
+      aprobacionIdCreada,
     );
 
     return { ...requerimiento, excluidosPorHomologacion: excluidos.map((p) => ({ id: p.id, nombre: p.nombre })) };
@@ -259,6 +264,7 @@ export class RequerimientosService {
             'PROVEEDOR',
             'Nueva invitación a licitar',
             `Fuiste invitado a participar en "${req.titulo}".`,
+            '/proveedor/invitaciones',
           ),
         ),
     );

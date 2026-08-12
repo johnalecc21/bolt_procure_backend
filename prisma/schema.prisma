@@ -577,6 +577,10 @@ model Notificacion {
   tipo      TipoNotificacion
   titulo    String
   desc      String
+  // Portal-relative path (e.g. "/cliente/aprobaciones?highlight=xyz") the user
+  // lands on when they click the notification — the deep link into the flow
+  // that actually needs their attention, not just a generic list.
+  link      String?
   leida     Boolean          @default(false)
   createdAt DateTime         @default(now())
 

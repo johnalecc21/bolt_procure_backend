@@ -60,6 +60,7 @@ export class PreguntasService {
         'PROVEEDOR',
         'Nueva pregunta de un proveedor',
         `Un proveedor preguntó sobre "${req.titulo}".`,
+        `/cliente/licitaciones/${requerimientoId}`,
       );
     }
     return pregunta;
@@ -93,6 +94,7 @@ export class PreguntasService {
         'PROVEEDOR',
         'Tu pregunta fue respondida',
         `"${pregunta.requerimiento.titulo}": ${respuesta.length > 120 ? `${respuesta.slice(0, 120)}…` : respuesta}`,
+        `/proveedor/ofertas/${pregunta.requerimientoId}`,
       );
     }
     return actualizada;

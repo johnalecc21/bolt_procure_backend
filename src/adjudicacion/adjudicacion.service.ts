@@ -121,6 +121,7 @@ export class AdjudicacionService {
         'CONTRATO',
         '¡Ganaste el proceso!',
         `${requerimiento.titulo} fue adjudicado a tu empresa. Orden de compra ${adjudicacion.poId} — revisa el detalle en Mis Contratos.`,
+        '/proveedor/contratos',
       );
     }
 
@@ -137,6 +138,7 @@ export class AdjudicacionService {
             'OFERTA',
             'Proceso adjudicado a otro proveedor',
             `${requerimiento.titulo} fue adjudicado a otro participante. Revisa el feedback en tu historial.`,
+            '/proveedor/historial',
           );
         }
       }
