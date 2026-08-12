@@ -26,6 +26,7 @@ import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { SubastaModule } from './subasta/subasta.module';
 import { InternoModule } from './interno/interno.module';
+import { PreguntasModule } from './preguntas/preguntas.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { InternoModule } from './interno/interno.module';
     AuditLogModule,
     SubastaModule,
     InternoModule,
+    PreguntasModule,
   ],
   controllers: [AppController],
   providers: [
