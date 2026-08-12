@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoAprobacion, EstadoRequerimiento } from '@prisma/client';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { EstadoAprobacion, EstadoRequerimiento, Role, TipoRegla } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 
@@ -10,14 +10,28 @@ export class AprobacionesService {
     private auditLog: AuditLogService,
   ) {}
 
-  list(companyId: string) {
-    return this.prisma.aprobacion.findMany({
+  // Matches the Matriz de Aprobación semantics: UNICA resolves as soon as
+  // ANY of the required roles approves; SECUENCIAL requires each required
+  // role to approve in order, so only the role at the current step qualifies.
+  private esElegible(
+    aprobacion: { tipoRegla: TipoRegla; rolesRequeridos: Role[]; pasoActual: number },
+    role: Role,
+  ) {
+    if (aprobacion.tipoRegla === TipoRegla.SECUENCIAL) {
+      return aprobacion.rolesRequeridos[aprobacion.pasoActual] === role;
+    }
+    return aprobacion.rolesRequeridos.includes(role);
+  }
+
+  async list(companyId: string, role: Role) {
+    const items = await this.prisma.aprobacion.findMany({
       where: { estado: EstadoAprobacion.PENDIENTE, requerimiento: { companyId } },
       include: {
         requerimiento: { select: { titulo: true, solicitante: { select: { nombre: true } } } },
       },
       orderBy: [{ urgente: 'desc' }, { createdAt: 'asc' }],
     });
+    return items.filter((a) => this.esElegible(a, role));
   }
 
   private async find(companyId: string, id: string) {
@@ -29,24 +43,48 @@ export class AprobacionesService {
     return aprobacion;
   }
 
-  async aprobar(companyId: string, id: string, resueltoPorId: string, actorNombre: string) {
+  async aprobar(companyId: string, id: string, resueltoPorId: string, resueltoPorRole: Role, actorNombre: string) {
     const aprobacion = await this.find(companyId, id);
-    await this.prisma.$transaction([
-      this.prisma.aprobacion.update({
+    if (aprobacion.estado !== EstadoAprobacion.PENDIENTE) {
+      throw new ForbiddenException('Esta aprobación ya fue resuelta.');
+    }
+    if (!this.esElegible(aprobacion, resueltoPorRole)) {
+      throw new ForbiddenException('Tu rol no está autorizado para aprobar esta solicitud según la Matriz de Aprobación.');
+    }
+
+    const esUltimoPaso =
+      aprobacion.tipoRegla !== TipoRegla.SECUENCIAL ||
+      aprobacion.pasoActual >= aprobacion.rolesRequeridos.length - 1;
+
+    if (esUltimoPaso) {
+      await this.prisma.$transaction([
+        this.prisma.aprobacion.update({
+          where: { id },
+          data: { estado: EstadoAprobacion.APROBADA, resueltoPorId, resueltoAt: new Date() },
+        }),
+        this.prisma.requerimiento.update({
+          where: { id: aprobacion.requerimientoId },
+          data: { estado: EstadoRequerimiento.EN_LICITACION },
+        }),
+      ]);
+      await this.auditLog.log({
+        usuarioId: resueltoPorId,
+        usuario: actorNombre,
+        accion: 'Aprobación',
+        detalle: aprobacion.requerimiento.titulo,
+      });
+    } else {
+      await this.prisma.aprobacion.update({
         where: { id },
-        data: { estado: EstadoAprobacion.APROBADA, resueltoPorId, resueltoAt: new Date() },
-      }),
-      this.prisma.requerimiento.update({
-        where: { id: aprobacion.requerimientoId },
-        data: { estado: EstadoRequerimiento.EN_LICITACION },
-      }),
-    ]);
-    await this.auditLog.log({
-      usuarioId: resueltoPorId,
-      usuario: actorNombre,
-      accion: 'Aprobación',
-      detalle: aprobacion.requerimiento.titulo,
-    });
+        data: { pasoActual: { increment: 1 } },
+      });
+      await this.auditLog.log({
+        usuarioId: resueltoPorId,
+        usuario: actorNombre,
+        accion: 'Aprobación (paso intermedio)',
+        detalle: `${aprobacion.requerimiento.titulo} — paso ${aprobacion.pasoActual + 1} de ${aprobacion.rolesRequeridos.length}`,
+      });
+    }
     return { ok: true };
   }
 
@@ -54,10 +92,17 @@ export class AprobacionesService {
     companyId: string,
     id: string,
     resueltoPorId: string,
+    resueltoPorRole: Role,
     actorNombre: string,
     motivo: string,
   ) {
     const aprobacion = await this.find(companyId, id);
+    if (aprobacion.estado !== EstadoAprobacion.PENDIENTE) {
+      throw new ForbiddenException('Esta aprobación ya fue resuelta.');
+    }
+    if (!this.esElegible(aprobacion, resueltoPorRole)) {
+      throw new ForbiddenException('Tu rol no está autorizado para rechazar esta solicitud según la Matriz de Aprobación.');
+    }
     await this.prisma.aprobacion.update({
       where: { id },
       data: {

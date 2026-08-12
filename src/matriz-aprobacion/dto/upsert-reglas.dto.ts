@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
-import { TipoRegla } from '@prisma/client';
+import { ArrayMinSize, IsArray, IsEnum, IsInt, IsOptional, Min, ValidateNested } from 'class-validator';
+import { Role, TipoRegla } from '@prisma/client';
 
 export class ReglaDto {
   @IsInt()
@@ -11,10 +11,12 @@ export class ReglaDto {
   @IsInt()
   montoMax?: number;
 
-  @IsString()
-  aprobadores: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsEnum(Role, { each: true })
+  roles: Role[];
 
-  @IsString()
+  @IsEnum(TipoRegla)
   tipo: TipoRegla;
 }
 

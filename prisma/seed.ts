@@ -124,18 +124,18 @@ async function main() {
   await prisma.matrizAprobacionRegla.deleteMany({ where: { companyId: acme.id } });
   await prisma.matrizAprobacionRegla.createMany({
     data: [
-      { companyId: acme.id, montoMin: 0, montoMax: 10000, aprobadores: 'Comprador', tipo: TipoRegla.UNICA },
-      { companyId: acme.id, montoMin: 10001, montoMax: 50000, aprobadores: 'Gerente de Compras', tipo: TipoRegla.UNICA },
-      { companyId: acme.id, montoMin: 50001, montoMax: 200000, aprobadores: 'CFO', tipo: TipoRegla.SECUENCIAL },
-      { companyId: acme.id, montoMin: 200001, montoMax: null, aprobadores: 'CEO + CFO', tipo: TipoRegla.SECUENCIAL },
+      { companyId: acme.id, montoMin: 0, montoMax: 10000, roles: [Role.COMPRADOR], tipo: TipoRegla.UNICA },
+      { companyId: acme.id, montoMin: 10001, montoMax: 50000, roles: [Role.ADMIN_CLIENTE], tipo: TipoRegla.UNICA },
+      { companyId: acme.id, montoMin: 50001, montoMax: 200000, roles: [Role.APROBADOR_CFO], tipo: TipoRegla.SECUENCIAL },
+      { companyId: acme.id, montoMin: 200001, montoMax: null, roles: [Role.ADMIN_CLIENTE, Role.APROBADOR_CFO], tipo: TipoRegla.SECUENCIAL },
     ],
   });
   await prisma.matrizAprobacionRegla.deleteMany({ where: { companyId: techcorp.id } });
   await prisma.matrizAprobacionRegla.createMany({
     data: [
-      { companyId: techcorp.id, montoMin: 0, montoMax: 15000, aprobadores: 'Comprador', tipo: TipoRegla.UNICA },
-      { companyId: techcorp.id, montoMin: 15001, montoMax: 100000, aprobadores: 'Admin de Cuenta', tipo: TipoRegla.UNICA },
-      { companyId: techcorp.id, montoMin: 100001, montoMax: null, aprobadores: 'CEO', tipo: TipoRegla.SECUENCIAL },
+      { companyId: techcorp.id, montoMin: 0, montoMax: 15000, roles: [Role.COMPRADOR], tipo: TipoRegla.UNICA },
+      { companyId: techcorp.id, montoMin: 15001, montoMax: 100000, roles: [Role.ADMIN_CLIENTE], tipo: TipoRegla.UNICA },
+      { companyId: techcorp.id, montoMin: 100001, montoMax: null, roles: [Role.ADMIN_CLIENTE], tipo: TipoRegla.SECUENCIAL },
     ],
   });
 

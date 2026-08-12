@@ -284,6 +284,9 @@ model Aprobacion {
   motivoRechazo   String?
   resueltoPorId   String?
   resueltoAt      DateTime?
+  rolesRequeridos Role[]
+  tipoRegla       TipoRegla        @default(UNICA)
+  pasoActual      Int              @default(0)
   createdAt       DateTime         @default(now())
 
   requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
@@ -293,12 +296,12 @@ model Aprobacion {
 }
 
 model MatrizAprobacionRegla {
-  id          String    @id @default(cuid())
-  companyId   String
-  montoMin    Int
-  montoMax    Int?
-  aprobadores String
-  tipo        TipoRegla @default(UNICA)
+  id        String    @id @default(cuid())
+  companyId String
+  montoMin  Int
+  montoMax  Int?
+  roles     Role[]
+  tipo      TipoRegla @default(UNICA)
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 

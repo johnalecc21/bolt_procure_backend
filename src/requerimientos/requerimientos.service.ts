@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoHomologacion, EstadoRequerimiento, Prisma, Role, TipoAprobacion } from '@prisma/client';
+import { EstadoHomologacion, EstadoRequerimiento, Prisma, Role, TipoAprobacion, TipoRegla } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
@@ -54,13 +54,28 @@ export class RequerimientosService {
         },
       });
       // Every new requerimiento needs a green light before it can go out to
-      // tender — mirrors the approval-matrix trigger point from the spec.
+      // tender. Who can grant it is decided by the company's Matriz de
+      // Aprobación — the rule matching the monto is snapshotted onto the
+      // aprobacion so a later matrix edit doesn't retroactively change who
+      // was authorized to approve an already-pending request.
+      const reglas = await tx.matrizAprobacionRegla.findMany({
+        where: { companyId },
+        orderBy: { montoMin: 'asc' },
+      });
+      const regla = reglas.find(
+        (r) => dto.montoEstimado >= r.montoMin && (r.montoMax == null || dto.montoEstimado <= r.montoMax),
+      );
+      const rolesRequeridos = regla && regla.roles.length > 0
+        ? regla.roles
+        : [Role.ADMIN_CLIENTE, Role.APROBADOR_CFO];
       await tx.aprobacion.create({
         data: {
           requerimientoId: requerimiento.id,
           tipo: TipoAprobacion.SALIDA_LICITACION,
           monto: dto.montoEstimado,
           urgente: false,
+          rolesRequeridos,
+          tipoRegla: regla?.tipo ?? TipoRegla.UNICA,
         },
       });
       return requerimiento;
