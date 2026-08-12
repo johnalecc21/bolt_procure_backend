@@ -20,7 +20,7 @@ export class ContratosService {
           : {}),
       },
       orderBy: { vigenciaFin: 'asc' },
-      include: { hitos: true },
+      include: { hitos: { orderBy: { orden: 'asc' } } },
     });
   }
 

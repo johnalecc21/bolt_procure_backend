@@ -53,7 +53,7 @@ export class AdjudicacionService {
     return { ok: true };
   }
 
-  async firmar(requerimientoId: string, actorNombre: string) {
+  async firmar(requerimientoId: string, actorNombre: string, notificarPerdedoresOverride?: boolean) {
     const adjudicacion = await this.getOrThrow(requerimientoId);
     if (!adjudicacion.confirmada) {
       throw new BadRequestException('Confirma la adjudicación antes de enviar a firma.');
@@ -61,6 +61,10 @@ export class AdjudicacionService {
     if (adjudicacion.precioFinal > UMBRAL_LEGAL && !adjudicacion.revisionLegal) {
       throw new BadRequestException('Completa la revisión legal antes de enviar a firma.');
     }
+    // The checkbox on the firma screen is the actual decision point — it
+    // overrides whatever was set (or defaulted) when the adjudicación was
+    // first created, and we persist it so the record reflects what happened.
+    const notificarPerdedores = notificarPerdedoresOverride ?? adjudicacion.notificarPerdedores;
 
     const requerimiento = await this.prisma.requerimiento.findUniqueOrThrow({
       where: { id: requerimientoId },
@@ -75,7 +79,7 @@ export class AdjudicacionService {
     vigenciaFin.setFullYear(vigenciaFin.getFullYear() + 1);
 
     const [, , contrato] = await this.prisma.$transaction([
-      this.prisma.adjudicacion.update({ where: { requerimientoId }, data: { firmado: true } }),
+      this.prisma.adjudicacion.update({ where: { requerimientoId }, data: { firmado: true, notificarPerdedores } }),
       this.prisma.requerimiento.update({
         where: { id: requerimientoId },
         data: { estado: EstadoRequerimiento.ADJUDICADO },
@@ -125,7 +129,7 @@ export class AdjudicacionService {
       );
     }
 
-    if (adjudicacion.notificarPerdedores) {
+    if (notificarPerdedores) {
       const perdedores = await this.prisma.oferta.findMany({
         where: { requerimientoId, proveedorId: { not: adjudicacion.proveedorId } },
         include: { proveedor: { include: { user: true } } },
