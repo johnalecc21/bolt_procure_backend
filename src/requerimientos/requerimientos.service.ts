@@ -78,6 +78,7 @@ export class RequerimientosService {
         documentos: true,
         adjudicacion: true,
         ofertas: { include: { proveedor: true } },
+        invitaciones: { where: { enviada: true }, include: { proveedor: true } },
         aprobaciones: {
           orderBy: { createdAt: 'asc' },
           include: {
