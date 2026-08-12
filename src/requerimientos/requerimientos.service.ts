@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoHomologacion, EstadoRequerimiento, Role, TipoAprobacion } from '@prisma/client';
+import { EstadoHomologacion, EstadoRequerimiento, Prisma, Role, TipoAprobacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
@@ -44,10 +44,12 @@ export class RequerimientosService {
           companyId,
           solicitanteId,
           titulo: dto.titulo,
+          descripcion: dto.descripcion,
           categoria: dto.categoria,
           montoEstimado: dto.montoEstimado,
           fechaLimite: new Date(dto.fechaLimite),
           criteriosPeso: dto.criteriosPeso,
+          especificaciones: dto.especificaciones as unknown as Prisma.InputJsonValue,
           estado: EstadoRequerimiento.PENDIENTE_APROBACION,
         },
       });

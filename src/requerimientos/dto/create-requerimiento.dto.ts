@@ -1,9 +1,32 @@
-import { IsInt, IsISO8601, IsObject, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsInt,
+  IsISO8601,
+  IsObject,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
+
+export class EspecificacionDto {
+  @IsString()
+  name: string;
+
+  @IsString()
+  value: string;
+}
 
 export class CreateRequerimientoDto {
   @IsString()
   @MinLength(3)
   titulo: string;
+
+  @IsString()
+  @IsOptional()
+  descripcion?: string;
 
   @IsString()
   categoria: string;
@@ -18,4 +41,10 @@ export class CreateRequerimientoDto {
   @IsObject()
   @IsOptional()
   criteriosPeso?: Record<string, number>;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EspecificacionDto)
+  @IsOptional()
+  especificaciones?: EspecificacionDto[];
 }

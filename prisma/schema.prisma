@@ -222,6 +222,7 @@ model Requerimiento {
   id                   String              @id @default(cuid())
   companyId            String
   titulo               String
+  descripcion          String?
   categoria            String
   estado               EstadoRequerimiento @default(BORRADOR)
   montoEstimado        Int
@@ -231,6 +232,7 @@ model Requerimiento {
   ofertasRecibidas     Int                 @default(0)
   solicitanteId        String
   criteriosPeso        Json?
+  especificaciones     Json?
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
