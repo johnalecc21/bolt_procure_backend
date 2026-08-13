@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -27,10 +28,12 @@ import { AuditLogModule } from './audit-log/audit-log.module';
 import { SubastaModule } from './subasta/subasta.module';
 import { InternoModule } from './interno/interno.module';
 import { PreguntasModule } from './preguntas/preguntas.module';
+import { VencimientosModule } from './vencimientos/vencimientos.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     SupabaseModule,
     AuthModule,
@@ -52,6 +55,7 @@ import { PreguntasModule } from './preguntas/preguntas.module';
     SubastaModule,
     InternoModule,
     PreguntasModule,
+    VencimientosModule,
   ],
   controllers: [AppController],
   providers: [

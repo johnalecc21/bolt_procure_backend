@@ -463,6 +463,12 @@ model Contrato {
   // (see HitoSeguimiento.porcentaje) doesn't need to reach back through
   // requerimiento → adjudicacion just to know when a generated PagoPO is due.
   condicionesPagoDias Int @default(30)
+  // Set by the daily vencimientos cron the first time each threshold is
+  // crossed, so a contract nearing expiry gets exactly one notification per
+  // threshold instead of one every day the cron runs.
+  recordatorio60Enviado Boolean @default(false)
+  recordatorio30Enviado Boolean @default(false)
+  recordatorio15Enviado Boolean @default(false)
 
   company       Company           @relation(fields: [companyId], references: [id])
   requerimiento Requerimiento?    @relation(fields: [requerimientoId], references: [id])
