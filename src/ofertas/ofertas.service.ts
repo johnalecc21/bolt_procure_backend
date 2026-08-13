@@ -139,14 +139,28 @@ export class OfertasService {
 
     const procesos = misOfertas.map((o) => {
       const adj = o.requerimiento.adjudicacion;
-      let resultado: 'ganado' | 'perdido' | 'pendiente' = 'pendiente';
+      let resultado: 'ganado' | 'perdido' | 'pendiente' | 'seleccionado' = 'pendiente';
       let feedback: string | undefined;
       if (adj?.firmado) {
         resultado = adj.proveedorId === proveedorId ? 'ganado' : 'perdido';
         if (resultado === 'perdido') {
           feedback = 'El proceso fue adjudicado a otro proveedor con mejor relación precio-calidad.';
         }
+      } else if (adj?.confirmada && adj.proveedorId === proveedorId) {
+        // Chosen, but the contract/PO hasn't been signed yet — a real interim
+        // state, not just "pendiente" like every other unresolved process.
+        resultado = 'seleccionado';
       }
+      const awardTerms =
+        (resultado === 'seleccionado' || resultado === 'ganado') && adj
+          ? {
+              poId: adj.poId,
+              precioFinal: adj.precioFinal,
+              plazoDias: adj.plazoDias,
+              condicionesPagoDias: adj.condicionesPagoDias,
+              garantiaMeses: adj.garantiaMeses,
+            }
+          : {};
       return {
         id: o.id,
         requerimientoId: o.requerimientoId,
@@ -156,6 +170,7 @@ export class OfertasService {
         monto: o.precioTotal,
         resultado,
         feedback,
+        ...awardTerms,
       };
     });
 

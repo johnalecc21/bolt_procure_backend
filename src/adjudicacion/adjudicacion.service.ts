@@ -36,6 +36,28 @@ export class AdjudicacionService {
       accion: 'Adjudicación confirmada',
       detalle: `${requerimientoId} → ${adjudicacion.proveedorId} ($${adjudicacion.precioFinal})`,
     });
+
+    // The provider needs to hear this the moment a human decides, not only
+    // once the (separate, later) signature step completes — that's the real
+    // "award letter" moment in procurement, even though it's conditional on
+    // the contract still getting signed.
+    const requerimiento = await this.prisma.requerimiento.findUnique({
+      where: { id: requerimientoId },
+      select: { titulo: true },
+    });
+    const proveedor = await this.prisma.proveedorProfile.findUnique({
+      where: { id: adjudicacion.proveedorId },
+      include: { user: true },
+    });
+    if (requerimiento && proveedor?.user) {
+      await this.notificaciones.create(
+        proveedor.user.id,
+        'CONTRATO',
+        '¡Fuiste seleccionado como ganador!',
+        `Tu oferta para "${requerimiento.titulo}" fue seleccionada, sujeta a la firma del contrato. Revisa la carta de adjudicación en tu historial.`,
+        '/proveedor/historial',
+      );
+    }
     return { ok: true };
   }
 
