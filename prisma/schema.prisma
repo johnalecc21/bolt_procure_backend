@@ -459,6 +459,10 @@ model Contrato {
   // Set on a PO issued under a Contrato Marco (tipo CONTRATO) — links the
   // child PO back to the master agreement it was issued under.
   contratoPadreId String?
+  // Copied from the Adjudicacion at signing time so payment-on-milestone
+  // (see HitoSeguimiento.porcentaje) doesn't need to reach back through
+  // requerimiento → adjudicacion just to know when a generated PagoPO is due.
+  condicionesPagoDias Int @default(30)
 
   company       Company           @relation(fields: [companyId], references: [id])
   requerimiento Requerimiento?    @relation(fields: [requerimientoId], references: [id])
@@ -478,8 +482,13 @@ model HitoSeguimiento {
   real         DateTime?
   estado       EstadoHito @default(PENDIENTE)
   orden        Int        @default(0)
+  // % of the contrato's monto released when this hito is marked COMPLETADO —
+  // moving it to COMPLETADO generates a real PagoPO for that amount.
+  porcentaje   Int        @default(0)
+  pagoGeneradoId String?  @unique
 
-  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  contrato    Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  pagoGenerado PagoPO? @relation(fields: [pagoGeneradoId], references: [id])
 
   @@map("hitos_seguimiento")
 }
@@ -576,8 +585,9 @@ model PagoPO {
   estado           EstadoPago @default(PENDIENTE)
   disputaAbierta   Boolean    @default(false)
 
-  contrato  Contrato         @relation(fields: [contratoId], references: [id])
-  proveedor ProveedorProfile @relation(fields: [proveedorId], references: [id])
+  contrato   Contrato         @relation(fields: [contratoId], references: [id])
+  proveedor  ProveedorProfile @relation(fields: [proveedorId], references: [id])
+  hitoOrigen HitoSeguimiento?
 
   @@map("pagos_po")
 }

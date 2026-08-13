@@ -36,7 +36,7 @@ export class SeguimientoController {
     @Param('id') id: string,
     @Body() dto: UpdateHitoDto,
   ) {
-    return this.service.actualizarHito(user.companyId, id, dto);
+    return this.service.actualizarHito(user.companyId, id, dto, user.email);
   }
 
   @Delete('hitos/:id')

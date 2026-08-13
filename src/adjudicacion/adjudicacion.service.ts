@@ -124,6 +124,7 @@ export class AdjudicacionService {
           monto: adjudicacion.precioFinal,
           vigenciaInicio: hoy,
           vigenciaFin,
+          condicionesPagoDias: adjudicacion.condicionesPagoDias,
         },
       }),
     ]);
@@ -135,11 +136,13 @@ export class AdjudicacionService {
     entrega.setDate(entrega.getDate() + adjudicacion.plazoDias);
     const cierre = new Date(entrega);
     cierre.setDate(cierre.getDate() + 5);
+    // Default 30/40/30 payment split — the client can adjust each hito's
+    // porcentaje afterward from Seguimiento, before marking it completado.
     await this.prisma.hitoSeguimiento.createMany({
       data: [
-        { contratoId: contrato.id, label: 'Inicio del contrato', comprometido: hoy, orden: 0 },
-        { contratoId: contrato.id, label: 'Entrega', comprometido: entrega, orden: 1 },
-        { contratoId: contrato.id, label: 'Cierre y conformidad', comprometido: cierre, orden: 2 },
+        { contratoId: contrato.id, label: 'Inicio del contrato', comprometido: hoy, orden: 0, porcentaje: 30 },
+        { contratoId: contrato.id, label: 'Entrega', comprometido: entrega, orden: 1, porcentaje: 40 },
+        { contratoId: contrato.id, label: 'Cierre y conformidad', comprometido: cierre, orden: 2, porcentaje: 30 },
       ],
     });
 

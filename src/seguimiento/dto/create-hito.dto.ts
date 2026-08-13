@@ -1,4 +1,4 @@
-import { IsDateString, IsString, MinLength } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 
 export class CreateHitoDto {
   @IsString()
@@ -7,4 +7,10 @@ export class CreateHitoDto {
 
   @IsDateString()
   comprometido: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  porcentaje?: number;
 }

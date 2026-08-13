@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 import { EstadoHito } from '@prisma/client';
 
 export class UpdateHitoDto {
@@ -14,4 +14,10 @@ export class UpdateHitoDto {
   @IsOptional()
   @IsEnum(EstadoHito)
   estado?: EstadoHito;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  porcentaje?: number;
 }

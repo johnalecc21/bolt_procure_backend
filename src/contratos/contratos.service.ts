@@ -44,6 +44,14 @@ export class ContratosService {
         hitos: { orderBy: { orden: 'asc' } },
         hijas: { select: { id: true, monto: true, estado: true, vigenciaInicio: true, vigenciaFin: true } },
         padre: { select: { id: true, monto: true, vigenciaFin: true } },
+        company: { select: { nombre: true } },
+        requerimiento: {
+          select: {
+            titulo: true,
+            descripcion: true,
+            adjudicacion: { select: { garantiaMeses: true, plazoDias: true } },
+          },
+        },
       },
     });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
@@ -98,7 +106,17 @@ export class ContratosService {
     const proveedorId = await this.proveedorIdForUser(userId);
     const contrato = await this.prisma.contrato.findFirst({
       where: { id, requerimiento: { adjudicacion: { proveedorId } } },
-      include: { hitos: { orderBy: { orden: 'asc' } }, company: true },
+      include: {
+        hitos: { orderBy: { orden: 'asc' } },
+        company: true,
+        requerimiento: {
+          select: {
+            titulo: true,
+            descripcion: true,
+            adjudicacion: { select: { garantiaMeses: true, plazoDias: true } },
+          },
+        },
+      },
     });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
     return contrato;
