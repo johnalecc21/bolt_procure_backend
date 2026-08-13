@@ -90,6 +90,7 @@ export class AdjudicacionService {
 
     const requerimiento = await this.prisma.requerimiento.findUniqueOrThrow({
       where: { id: requerimientoId },
+      include: { company: { select: { umbralContratoMarco: true } } },
     });
     const proveedor = await this.prisma.proveedorProfile.findUniqueOrThrow({
       where: { id: adjudicacion.proveedorId },
@@ -99,6 +100,13 @@ export class AdjudicacionService {
     const hoy = new Date();
     const vigenciaFin = new Date(hoy);
     vigenciaFin.setFullYear(vigenciaFin.getFullYear() + 1);
+    // Below the threshold: a simple transactional PO. At or above it: a
+    // Contrato Marco — POs issued against it later (emitirPo) inherit its
+    // vigencia and terms instead of each needing their own legal review.
+    const tipo =
+      adjudicacion.precioFinal >= requerimiento.company.umbralContratoMarco
+        ? TipoContrato.CONTRATO
+        : TipoContrato.PO;
 
     const [, , contrato] = await this.prisma.$transaction([
       this.prisma.adjudicacion.update({ where: { requerimientoId }, data: { firmado: true, notificarPerdedores } }),
@@ -110,7 +118,7 @@ export class AdjudicacionService {
         data: {
           companyId: requerimiento.companyId,
           requerimientoId,
-          tipo: TipoContrato.PO,
+          tipo,
           proveedorNombre: proveedor.nombre,
           categoria: requerimiento.categoria,
           monto: adjudicacion.precioFinal,

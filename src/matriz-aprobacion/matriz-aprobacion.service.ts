@@ -56,4 +56,21 @@ export class MatrizAprobacionService {
     });
     return this.list(companyId);
   }
+
+  async getConfig(companyId: string) {
+    return this.prisma.company.findUniqueOrThrow({
+      where: { id: companyId },
+      select: { umbralContratoMarco: true },
+    });
+  }
+
+  async updateConfig(companyId: string, umbralContratoMarco: number, actorNombre: string) {
+    await this.prisma.company.update({ where: { id: companyId }, data: { umbralContratoMarco } });
+    await this.auditLog.log({
+      usuario: actorNombre,
+      accion: 'Umbral de Contrato Marco actualizado',
+      detalle: `Nuevo umbral: $${umbralContratoMarco.toLocaleString()}`,
+    });
+    return this.getConfig(companyId);
+  }
 }

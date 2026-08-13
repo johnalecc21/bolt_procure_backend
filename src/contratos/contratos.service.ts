@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { TipoContrato } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import { EmitirPoDto } from './dto/emitir-po.dto';
 
 const BUCKET = 'contratos-documentos';
 
@@ -28,17 +30,53 @@ export class ContratosService {
           : {}),
       },
       orderBy: { vigenciaFin: 'asc' },
-      include: { hitos: { orderBy: { orden: 'asc' } } },
+      include: {
+        hitos: { orderBy: { orden: 'asc' } },
+        hijas: { select: { id: true, monto: true, estado: true } },
+      },
     });
   }
 
   async findOne(companyId: string, id: string) {
     const contrato = await this.prisma.contrato.findFirst({
       where: { id, companyId },
-      include: { hitos: { orderBy: { orden: 'asc' } } },
+      include: {
+        hitos: { orderBy: { orden: 'asc' } },
+        hijas: { select: { id: true, monto: true, estado: true, vigenciaInicio: true, vigenciaFin: true } },
+        padre: { select: { id: true, monto: true, vigenciaFin: true } },
+      },
     });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
     return contrato;
+  }
+
+  // Only under a Contrato Marco — the whole point of the master agreement is
+  // that individual purchase orders don't each need their own legal review.
+  async emitirPo(companyId: string, contratoPadreId: string, dto: EmitirPoDto, actorNombre: string) {
+    const padre = await this.prisma.contrato.findFirst({ where: { id: contratoPadreId, companyId } });
+    if (!padre) throw new NotFoundException('Contrato no encontrado.');
+    if (padre.tipo !== TipoContrato.CONTRATO) {
+      throw new BadRequestException('Solo se pueden emitir POs bajo un Contrato Marco.');
+    }
+    const po = await this.prisma.contrato.create({
+      data: {
+        companyId,
+        requerimientoId: padre.requerimientoId,
+        tipo: TipoContrato.PO,
+        proveedorNombre: padre.proveedorNombre,
+        categoria: padre.categoria,
+        monto: dto.monto,
+        vigenciaInicio: new Date(dto.vigenciaInicio),
+        vigenciaFin: new Date(dto.vigenciaFin),
+        contratoPadreId: padre.id,
+      },
+    });
+    await this.auditLog.log({
+      usuario: actorNombre,
+      accion: 'PO emitida bajo Contrato Marco',
+      detalle: `${po.id} bajo ${padre.id} — $${dto.monto.toLocaleString()}`,
+    });
+    return po;
   }
 
   private async proveedorIdForUser(userId: string) {

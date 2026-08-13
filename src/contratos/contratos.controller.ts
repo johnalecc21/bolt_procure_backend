@@ -5,6 +5,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ContratosService } from './contratos.service';
 import { UploadUrlDto } from './dto/upload-url.dto';
 import { AdjuntarArchivoDto } from './dto/adjuntar-archivo.dto';
+import { EmitirPoDto } from './dto/emitir-po.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('contratos')
@@ -51,6 +52,12 @@ export class ContratosController {
   @Post(':id/adjuntar')
   adjuntar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AdjuntarArchivoDto) {
     return this.service.adjuntarArchivo(user.companyId, id, dto.path, dto.nombre, user.email);
+  }
+
+  @PortalOnly('CLIENTE')
+  @Post(':id/emitir-po')
+  emitirPo(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: EmitirPoDto) {
+    return this.service.emitirPo(user.companyId, id, dto, user.email);
   }
 
   // No @PortalOnly: cliente can fetch a link for any contrato in their company,

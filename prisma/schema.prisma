@@ -162,6 +162,11 @@ model Company {
   plan        PlanCliente       @default(STARTER)
   facturacion EstadoFacturacion @default(AL_DIA)
   createdAt   DateTime          @default(now())
+  // Adjudicaciones at or above this amount generate a Contrato Marco instead
+  // of a simple PO — independent from the "revisión legal" threshold, since
+  // a company may want legal review earlier (or later) than it wants a
+  // formal master contract.
+  umbralContratoMarco Int @default(50000)
 
   memberships    CompanyMembership[]
   requerimientos Requerimiento[]
@@ -451,11 +456,16 @@ model Contrato {
   // downloads this contract gets the Procurex-generated template instead.
   archivoNombre       String?
   archivoStoragePath  String?
+  // Set on a PO issued under a Contrato Marco (tipo CONTRATO) — links the
+  // child PO back to the master agreement it was issued under.
+  contratoPadreId String?
 
   company       Company           @relation(fields: [companyId], references: [id])
   requerimiento Requerimiento?    @relation(fields: [requerimientoId], references: [id])
   hitos         HitoSeguimiento[]
   pagos         PagoPO[]
+  padre         Contrato?         @relation("ContratoPadreHijas", fields: [contratoPadreId], references: [id])
+  hijas         Contrato[]        @relation("ContratoPadreHijas")
 
   @@map("contratos")
 }

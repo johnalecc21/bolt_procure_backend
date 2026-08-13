@@ -6,6 +6,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { MatrizAprobacionService } from './matriz-aprobacion.service';
 import { UpsertReglasDto } from './dto/upsert-reglas.dto';
+import { UpdateConfigDto } from './dto/update-config.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('matriz-aprobacion')
@@ -23,5 +24,16 @@ export class MatrizAprobacionController {
   @Put()
   replace(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertReglasDto) {
     return this.service.replace(user.companyId, dto.reglas, user.email);
+  }
+
+  // Registered after '' so it doesn't collide with the bare list/replace routes.
+  @Get('config')
+  getConfig(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.getConfig(user.companyId);
+  }
+
+  @Put('config')
+  updateConfig(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateConfigDto) {
+    return this.service.updateConfig(user.companyId, dto.umbralContratoMarco, user.email);
   }
 }
