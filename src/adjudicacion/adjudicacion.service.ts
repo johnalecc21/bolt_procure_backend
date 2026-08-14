@@ -3,6 +3,7 @@ import { EstadoRequerimiento, TipoContrato } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { formatRequerimientoCodigo } from '../common/utils/codigo.util';
 import { CreateAdjudicacionDto } from './dto/create-adjudicacion.dto';
 
 const UMBRAL_LEGAL = 50000;
@@ -33,7 +34,7 @@ export class AdjudicacionService {
     // the contract still getting signed.
     const requerimiento = await this.prisma.requerimiento.findUnique({
       where: { id: requerimientoId },
-      select: { titulo: true, companyId: true },
+      select: { titulo: true, companyId: true, numero: true },
     });
     await this.prisma.adjudicacion.update({
       where: { requerimientoId },
@@ -43,7 +44,7 @@ export class AdjudicacionService {
       companyId: requerimiento?.companyId,
       usuario: actorNombre,
       accion: 'Adjudicación confirmada',
-      detalle: `${requerimientoId} → ${adjudicacion.proveedorId} ($${adjudicacion.precioFinal})`,
+      detalle: `${requerimiento ? formatRequerimientoCodigo(requerimiento.numero) : requerimientoId} → ${adjudicacion.proveedorId} ($${adjudicacion.precioFinal})`,
     });
     const proveedor = await this.prisma.proveedorProfile.findUnique({
       where: { id: adjudicacion.proveedorId },
@@ -65,7 +66,7 @@ export class AdjudicacionService {
     await this.getOrThrow(requerimientoId);
     const requerimiento = await this.prisma.requerimiento.findUniqueOrThrow({
       where: { id: requerimientoId },
-      select: { companyId: true },
+      select: { companyId: true, numero: true },
     });
     await this.prisma.adjudicacion.update({
       where: { requerimientoId },
@@ -75,7 +76,7 @@ export class AdjudicacionService {
       companyId: requerimiento.companyId,
       usuario: actorNombre,
       accion: 'Revisión legal completada',
-      detalle: `Contrato ${requerimientoId} desbloqueado para firma`,
+      detalle: `Contrato ${formatRequerimientoCodigo(requerimiento.numero)} desbloqueado para firma`,
     });
     return { ok: true };
   }
@@ -155,7 +156,7 @@ export class AdjudicacionService {
       companyId: requerimiento.companyId,
       usuario: actorNombre,
       accion: 'Contrato firmado electrónicamente',
-      detalle: `${requerimientoId} → ${proveedor.nombre}`,
+      detalle: `${formatRequerimientoCodigo(requerimiento.numero)} → ${proveedor.nombre}`,
     });
 
     if (proveedor.user) {

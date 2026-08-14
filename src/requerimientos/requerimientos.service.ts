@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import { formatRequerimientoCodigo } from '../common/utils/codigo.util';
 import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
 
 const BUCKET = 'requerimientos-documentos';
@@ -191,7 +192,7 @@ export class RequerimientosService {
       companyId,
       usuario: actorNombre,
       accion: 'Cambio de estado de requerimiento',
-      detalle: `${id} → ${estado}`,
+      detalle: `${formatRequerimientoCodigo(updated.numero)} → ${estado}`,
     });
     return updated;
   }
@@ -205,7 +206,7 @@ export class RequerimientosService {
       companyId,
       usuario: actorNombre,
       accion: 'Plazo de licitación extendido',
-      detalle: `${id} +${dias} día(s)${motivo ? ` — ${motivo}` : ''}`,
+      detalle: `${formatRequerimientoCodigo(updated.numero)} +${dias} día(s)${motivo ? ` — ${motivo}` : ''}`,
     });
     return updated;
   }
@@ -245,6 +246,7 @@ export class RequerimientosService {
   async confirmarDocumento(companyId: string, id: string, docId: string, path: string, actorNombre: string) {
     const doc = await this.prisma.documentoRequerimiento.findFirst({
       where: { id: docId, requerimientoId: id, requerimiento: { companyId } },
+      include: { requerimiento: { select: { numero: true } } },
     });
     if (!doc) throw new NotFoundException('Documento no encontrado.');
     if (!path.startsWith(`${companyId}/${id}/${docId}/`)) {
@@ -258,7 +260,7 @@ export class RequerimientosService {
       companyId,
       usuario: actorNombre,
       accion: 'Documento adjuntado a requerimiento',
-      detalle: `${id} — ${doc.nombre}`,
+      detalle: `${formatRequerimientoCodigo(doc.requerimiento.numero)} — ${doc.nombre}`,
     });
     return actualizado;
   }
