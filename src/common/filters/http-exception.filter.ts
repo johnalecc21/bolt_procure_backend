@@ -1,4 +1,6 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Catch, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
+import { SentryExceptionCaptured } from '@sentry/nestjs';
 import type { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 
@@ -25,6 +27,11 @@ const PRISMA_STATUS: Partial<Record<string, { status: number; message: string }>
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter');
 
+  // Reports to GlitchTip only what's actually unexpected — any thrown
+  // HttpException (NotFoundException, BadRequestException, the throttler's
+  // 429, etc.) is normal control flow and skipped automatically, so this
+  // doesn't turn routine 4xx responses into noise in the error tracker.
+  @SentryExceptionCaptured()
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();

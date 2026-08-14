@@ -1,3 +1,6 @@
+// Must load before any other import — see instrument.ts for why.
+import './instrument';
+
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
