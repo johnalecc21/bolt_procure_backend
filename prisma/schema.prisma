@@ -228,6 +228,10 @@ model CompanyMembership {
 
 model Requerimiento {
   id                   String              @id @default(cuid())
+  // Human-readable sequential code (REQ-0001, REQ-0002, ...) shown in the UI
+  // instead of the cuid — Postgres autoincrement keeps it atomic and unique
+  // without any app-level counter logic.
+  numero               Int                 @unique @default(autoincrement())
   companyId            String
   titulo               String
   descripcion          String?
