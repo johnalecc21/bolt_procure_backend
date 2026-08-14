@@ -6,6 +6,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { InternoService } from './interno.service';
 import { ImpersonarDto } from './dto/impersonar.dto';
+import { CrearClienteDto } from './dto/crear-cliente.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('interno')
@@ -23,6 +24,12 @@ export class InternoController {
   @Get('clientes')
   listClientes() {
     return this.service.listClientes();
+  }
+
+  @Roles(Role.COMPLIANCE_OPS)
+  @Post('clientes')
+  crearCliente(@CurrentUser() user: AuthenticatedUser, @Body() dto: CrearClienteDto) {
+    return this.service.crearCliente(dto, user.sub, user.email);
   }
 
   @Roles(Role.COMPLIANCE_OPS)

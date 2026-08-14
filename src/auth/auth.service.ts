@@ -2,6 +2,7 @@ import { ConflictException, Injectable, BadRequestException } from '@nestjs/comm
 import { Portal, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import { iniciales as computeIniciales } from '../common/utils/iniciales.util';
 import { RegisterProveedorDto } from './dto/register-proveedor.dto';
 
 @Injectable()
@@ -63,13 +64,7 @@ export class AuthService {
       throw new ConflictException(error?.message ?? 'No se pudo crear la cuenta.');
     }
 
-    const iniciales =
-      dto.razonSocial
-        .trim()
-        .split(/\s+/)
-        .slice(0, 2)
-        .map((w) => w[0]?.toUpperCase())
-        .join('') || 'PV';
+    const iniciales = computeIniciales(dto.razonSocial, 'PV');
     const palette = [
       'oklch(0.46 0.14 246)',
       'oklch(0.60 0.18 155)',
