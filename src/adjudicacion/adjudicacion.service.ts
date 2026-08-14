@@ -40,15 +40,15 @@ export class AdjudicacionService {
       where: { requerimientoId },
       data: { confirmada: true },
     });
+    const proveedor = await this.prisma.proveedorProfile.findUnique({
+      where: { id: adjudicacion.proveedorId },
+      include: { user: true },
+    });
     await this.auditLog.log({
       companyId: requerimiento?.companyId,
       usuario: actorNombre,
       accion: 'Adjudicación confirmada',
-      detalle: `${requerimiento ? formatRequerimientoCodigo(requerimiento.numero) : requerimientoId} → ${adjudicacion.proveedorId} ($${adjudicacion.precioFinal})`,
-    });
-    const proveedor = await this.prisma.proveedorProfile.findUnique({
-      where: { id: adjudicacion.proveedorId },
-      include: { user: true },
+      detalle: `${requerimiento ? formatRequerimientoCodigo(requerimiento.numero) : requerimientoId} → ${proveedor?.nombre ?? adjudicacion.proveedorId} ($${adjudicacion.precioFinal})`,
     });
     if (requerimiento && proveedor?.user) {
       await this.notificaciones.create(
