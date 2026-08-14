@@ -10,6 +10,8 @@ import { AddCommentDto } from './dto/add-comment.dto';
 import { UpdateEstadoDto } from './dto/update-estado.dto';
 import { InviteProveedoresDto } from './dto/invite-proveedores.dto';
 import { ExtenderPlazoDto } from './dto/extender-plazo.dto';
+import { UploadUrlDto } from './dto/upload-url.dto';
+import { ConfirmarDocumentoDto } from './dto/confirmar-documento.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('requerimientos')
@@ -70,5 +72,33 @@ export class RequerimientosController {
     @Body() dto: InviteProveedoresDto,
   ) {
     return this.service.invitarProveedores(user.companyId, id, dto.proveedorIds);
+  }
+
+  @Post(':id/documentos/upload-url')
+  crearUrlSubidaDocumento(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UploadUrlDto,
+  ) {
+    return this.service.crearUrlSubidaDocumento(user.companyId, id, dto.filename);
+  }
+
+  @Post(':id/documentos/:docId/confirmar')
+  confirmarDocumento(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('docId') docId: string,
+    @Body() dto: ConfirmarDocumentoDto,
+  ) {
+    return this.service.confirmarDocumento(user.companyId, id, docId, dto.path, user.email);
+  }
+
+  @Get(':id/documentos/:docId/url')
+  crearUrlDescargaDocumento(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('docId') docId: string,
+  ) {
+    return this.service.crearUrlDescargaDocumento(user.companyId, id, docId);
   }
 }

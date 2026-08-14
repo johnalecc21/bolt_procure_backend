@@ -273,10 +273,13 @@ model ComentarioRequerimiento {
 }
 
 model DocumentoRequerimiento {
-  id              String   @id @default(cuid())
+  id              String          @id @default(cuid())
   requerimientoId String
   nombre          String
-  createdAt       DateTime @default(now())
+  estado          EstadoDocumento @default(PENDIENTE)
+  createdAt       DateTime        @default(now())
+  /// Path within the `requerimientos-documentos` Supabase Storage bucket, set once the file is actually uploaded.
+  storagePath     String?
 
   requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
 

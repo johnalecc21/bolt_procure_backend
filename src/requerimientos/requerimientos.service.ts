@@ -1,9 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoHomologacion, EstadoRequerimiento, Prisma, Role, TipoAprobacion, TipoRegla } from '@prisma/client';
+import { EstadoDocumento, EstadoHomologacion, EstadoRequerimiento, Prisma, Role, TipoAprobacion, TipoRegla } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { SupabaseService } from '../supabase/supabase.service';
 import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
+
+const BUCKET = 'requerimientos-documentos';
 
 @Injectable()
 export class RequerimientosService {
@@ -11,6 +14,7 @@ export class RequerimientosService {
     private prisma: PrismaService,
     private auditLog: AuditLogService,
     private notificaciones: NotificacionesService,
+    private supabase: SupabaseService,
   ) {}
 
   // Notifies whoever can act right now: for UNICA that's everyone in the
@@ -213,9 +217,66 @@ export class RequerimientosService {
     });
   }
 
-  async addDocumento(companyId: string, id: string, nombre: string) {
-    await this.findOne(companyId, id);
-    return this.prisma.documentoRequerimiento.create({ data: { requerimientoId: id, nombre } });
+  private async ownedByCompany(companyId: string, id: string) {
+    const req = await this.prisma.requerimiento.findFirst({ where: { id, companyId }, select: { id: true } });
+    if (!req) throw new NotFoundException('Requerimiento no encontrado.');
+  }
+
+  // Creates the document row up front (estado PENDIENTE) so the signed
+  // upload URL can be scoped to its own id — matches the Homologación
+  // pattern, which is the other per-parent-many-documents case in this app.
+  async crearUrlSubidaDocumento(companyId: string, id: string, filename: string) {
+    await this.ownedByCompany(companyId, id);
+    const doc = await this.prisma.documentoRequerimiento.create({
+      data: { requerimientoId: id, nombre: filename },
+    });
+
+    const safeName = filename.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const path = `${companyId}/${id}/${doc.id}/${safeName}`;
+    const { data, error } = await this.supabase.admin.storage
+      .from(BUCKET)
+      .createSignedUploadUrl(path, { upsert: true });
+    if (error || !data) {
+      throw new BadRequestException(error?.message ?? 'No se pudo preparar la subida del archivo.');
+    }
+    return { docId: doc.id, path, token: data.token };
+  }
+
+  async confirmarDocumento(companyId: string, id: string, docId: string, path: string, actorNombre: string) {
+    const doc = await this.prisma.documentoRequerimiento.findFirst({
+      where: { id: docId, requerimientoId: id, requerimiento: { companyId } },
+    });
+    if (!doc) throw new NotFoundException('Documento no encontrado.');
+    if (!path.startsWith(`${companyId}/${id}/${docId}/`)) {
+      throw new BadRequestException('Ruta de archivo inválida.');
+    }
+    const actualizado = await this.prisma.documentoRequerimiento.update({
+      where: { id: docId },
+      data: { estado: EstadoDocumento.SUBIDO, storagePath: path },
+    });
+    await this.auditLog.log({
+      companyId,
+      usuario: actorNombre,
+      accion: 'Documento adjuntado a requerimiento',
+      detalle: `${id} — ${doc.nombre}`,
+    });
+    return actualizado;
+  }
+
+  async crearUrlDescargaDocumento(companyId: string, id: string, docId: string) {
+    const doc = await this.prisma.documentoRequerimiento.findFirst({
+      where: { id: docId, requerimientoId: id, requerimiento: { companyId } },
+    });
+    if (!doc) throw new NotFoundException('Documento no encontrado.');
+    if (!doc.storagePath) throw new NotFoundException('Este documento todavía no tiene un archivo adjunto.');
+
+    const { data, error } = await this.supabase.admin.storage
+      .from(BUCKET)
+      .createSignedUrl(doc.storagePath, 300);
+    if (error || !data) {
+      throw new BadRequestException(error?.message ?? 'No se pudo generar el enlace de descarga.');
+    }
+    return { url: data.signedUrl, nombre: doc.nombre };
   }
 
   // Adds providers beyond the shortlist chosen at creation — used any time

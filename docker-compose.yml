@@ -1,17 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: bolt_procure_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: procureos
-      POSTGRES_PASSWORD: procureos
-      POSTGRES_DB: procureos
-    ports:
-      - "5432:5432"
-    volumes:
-      - procureos_pgdata:/var/lib/postgresql/data
-
   redis:
     image: redis:7-alpine
     container_name: bolt_procure_redis
@@ -23,5 +10,4 @@ services:
       - procureos_redisdata:/data
 
 volumes:
-  procureos_pgdata:
   procureos_redisdata:

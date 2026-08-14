@@ -11,6 +11,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { SupabaseModule } from './supabase/supabase.module';
 import { RedisModule } from './redis/redis.module';
 import { REDIS_CLIENT } from './redis/redis.constants';
+import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -54,6 +55,7 @@ import { VencimientosModule } from './vencimientos/vencimientos.module';
     }),
     PrismaModule,
     SupabaseModule,
+    HealthModule,
     AuthModule,
     UsuariosModule,
     RequerimientosModule,
