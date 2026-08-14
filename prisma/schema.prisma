@@ -449,6 +449,9 @@ model Adjudicacion {
 
 model Contrato {
   id              String         @id @default(cuid())
+  // Human-readable sequential code (CTO-0001 / PO-0001 / ADD-0001, prefix
+  // from `tipo`) — same pattern as Requerimiento.numero.
+  numero          Int            @unique @default(autoincrement())
   companyId       String
   requerimientoId String?
   tipo            TipoContrato

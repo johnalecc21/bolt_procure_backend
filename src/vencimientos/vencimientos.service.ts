@@ -4,6 +4,7 @@ import { EstadoContrato, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { formatContratoCodigo } from '../common/utils/codigo.util';
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 const UMBRALES = [60, 30, 15] as const;
@@ -33,18 +34,19 @@ export class VencimientosService {
       const diasRestantes = Math.ceil((contrato.vigenciaFin.getTime() - ahora) / MS_POR_DIA);
 
       if (diasRestantes < 0) {
+        const codigo = formatContratoCodigo(contrato.tipo, contrato.numero);
         await this.prisma.contrato.update({ where: { id: contrato.id }, data: { estado: EstadoContrato.VENCIDO } });
         await this.auditLog.log({
           companyId: contrato.companyId,
           usuario: 'Sistema (cron vencimientos)',
           accion: 'Contrato vencido',
-          detalle: `${contrato.id} venció el ${contrato.vigenciaFin.toISOString().slice(0, 10)}`,
+          detalle: `${codigo} venció el ${contrato.vigenciaFin.toISOString().slice(0, 10)}`,
         });
         await this.notificarResponsables(
           contrato.companyId,
           'CONTRATO',
           'Contrato vencido',
-          `${contrato.id} (${contrato.proveedorNombre}) venció y sigue en estado activo. Revisa si requiere renovación.`,
+          `${codigo} (${contrato.proveedorNombre}) venció y sigue en estado activo. Revisa si requiere renovación.`,
           '/cliente/contratos',
         );
         vencidos++;
@@ -64,7 +66,7 @@ export class VencimientosService {
             contrato.companyId,
             'CONTRATO',
             `Vence en ${diasRestantes} días`,
-            `${contrato.id} (${contrato.proveedorNombre}) vence el ${contrato.vigenciaFin.toISOString().slice(0, 10)} — quedan ${diasRestantes} días.`,
+            `${formatContratoCodigo(contrato.tipo, contrato.numero)} (${contrato.proveedorNombre}) vence el ${contrato.vigenciaFin.toISOString().slice(0, 10)} — quedan ${diasRestantes} días.`,
             '/cliente/contratos',
           );
           recordatoriosEnviados++;

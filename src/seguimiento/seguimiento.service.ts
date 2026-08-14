@@ -3,6 +3,7 @@ import { EstadoHito } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { formatContratoCodigo } from '../common/utils/codigo.util';
 import { CreateHitoDto } from './dto/create-hito.dto';
 import { UpdateHitoDto } from './dto/update-hito.dto';
 
@@ -87,7 +88,7 @@ export class SeguimientoService {
           companyId,
           usuario: actorNombre,
           accion: 'Pago generado por hito completado',
-          detalle: `${hito.contratoId} — ${hito.label} (${hito.porcentaje}%) → $${monto.toLocaleString()}`,
+          detalle: `${formatContratoCodigo(hito.contrato.tipo, hito.contrato.numero)} — ${hito.label} (${hito.porcentaje}%) → $${monto.toLocaleString()}`,
         });
         const proveedor = await this.prisma.proveedorProfile.findUnique({ where: { id: proveedorId }, include: { user: true } });
         if (proveedor?.user) {

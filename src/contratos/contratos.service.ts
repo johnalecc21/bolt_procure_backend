@@ -3,6 +3,7 @@ import { TipoContrato } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import { formatContratoCodigo } from '../common/utils/codigo.util';
 import { EmitirPoDto } from './dto/emitir-po.dto';
 
 const BUCKET = 'contratos-documentos';
@@ -86,7 +87,7 @@ export class ContratosService {
       companyId,
       usuario: actorNombre,
       accion: 'PO emitida bajo Contrato Marco',
-      detalle: `${po.id} bajo ${padre.id} — $${dto.monto.toLocaleString()}`,
+      detalle: `${formatContratoCodigo(po.tipo, po.numero)} bajo ${formatContratoCodigo(padre.tipo, padre.numero)} — $${dto.monto.toLocaleString()}`,
     });
     return po;
   }
@@ -157,7 +158,7 @@ export class ContratosService {
       companyId,
       usuario: actorNombre,
       accion: 'Documento propio adjuntado a contrato',
-      detalle: `${id} — ${nombre}`,
+      detalle: `${formatContratoCodigo(actualizado.tipo, actualizado.numero)} — ${nombre}`,
     });
     return actualizado;
   }
