@@ -111,6 +111,7 @@ export class AprobacionesService {
         }),
       ]);
       await this.auditLog.log({
+        companyId,
         usuarioId: resueltoPorId,
         usuario: actorNombre,
         accion: 'Aprobación',
@@ -130,6 +131,7 @@ export class AprobacionesService {
         }),
       ]);
       await this.auditLog.log({
+        companyId,
         usuarioId: resueltoPorId,
         usuario: actorNombre,
         accion: 'Aprobación (paso intermedio)',
@@ -173,6 +175,7 @@ export class AprobacionesService {
       },
     });
     await this.auditLog.log({
+      companyId,
       usuarioId: resueltoPorId,
       usuario: actorNombre,
       accion: 'Rechazo',

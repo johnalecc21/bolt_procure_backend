@@ -66,6 +66,7 @@ export class UsuariosService {
     });
 
     await this.auditLog.log({
+      companyId,
       usuario: actorNombre,
       accion: 'Usuario invitado',
       detalle: `${dto.email} → ${dto.role}`,
@@ -90,6 +91,7 @@ export class UsuariosService {
     const rolAnterior = membership.user.role;
     await this.prisma.user.update({ where: { id: userId }, data: { role } });
     await this.auditLog.log({
+      companyId,
       usuario: actorNombre,
       accion: 'Cambio de rol',
       detalle: `${membership.user.nombre}: ${rolAnterior} → ${role}`,
@@ -116,6 +118,7 @@ export class UsuariosService {
       data: { activo: nextActive },
     });
     await this.auditLog.log({
+      companyId,
       usuario: actorNombre,
       accion: nextActive ? 'Usuario reactivado' : 'Usuario desactivado',
       detalle: membership.user.email,

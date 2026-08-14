@@ -46,6 +46,7 @@ export class InternoService {
     const company = await this.prisma.company.findUnique({ where: { id: companyId } });
     if (!company) throw new NotFoundException('Cliente no encontrado.');
     await this.auditLog.log({
+      companyId,
       usuarioId: actorId,
       usuario: actorNombre,
       accion: 'Impersonación de cliente',

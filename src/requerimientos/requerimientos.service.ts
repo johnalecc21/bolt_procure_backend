@@ -66,6 +66,9 @@ export class RequerimientosService {
       },
       include: { solicitante: { select: { nombre: true } } },
       orderBy: { createdAt: 'desc' },
+      // Dashboard/table screens filter this client-side, so it isn't
+      // page-paginated — this is a growth guard-rail, not a page size.
+      take: 200,
     });
   }
 
@@ -181,6 +184,7 @@ export class RequerimientosService {
     await this.findOne(companyId, id);
     const updated = await this.prisma.requerimiento.update({ where: { id }, data: { estado } });
     await this.auditLog.log({
+      companyId,
       usuario: actorNombre,
       accion: 'Cambio de estado de requerimiento',
       detalle: `${id} → ${estado}`,
@@ -194,6 +198,7 @@ export class RequerimientosService {
     nuevaFecha.setDate(nuevaFecha.getDate() + dias);
     const updated = await this.prisma.requerimiento.update({ where: { id }, data: { fechaLimite: nuevaFecha } });
     await this.auditLog.log({
+      companyId,
       usuario: actorNombre,
       accion: 'Plazo de licitación extendido',
       detalle: `${id} +${dias} día(s)${motivo ? ` — ${motivo}` : ''}`,

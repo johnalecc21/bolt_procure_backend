@@ -30,6 +30,9 @@ export class ContratosService {
           : {}),
       },
       orderBy: { vigenciaFin: 'asc' },
+      // The screen does live client-side search/filter over this list, so it
+      // isn't page-paginated — this is a growth guard-rail, not a page size.
+      take: 200,
       include: {
         hitos: { orderBy: { orden: 'asc' } },
         hijas: { select: { id: true, monto: true, estado: true } },
@@ -80,6 +83,7 @@ export class ContratosService {
       },
     });
     await this.auditLog.log({
+      companyId,
       usuario: actorNombre,
       accion: 'PO emitida bajo Contrato Marco',
       detalle: `${po.id} bajo ${padre.id} — $${dto.monto.toLocaleString()}`,
@@ -150,6 +154,7 @@ export class ContratosService {
       data: { archivoStoragePath: path, archivoNombre: nombre },
     });
     await this.auditLog.log({
+      companyId,
       usuario: actorNombre,
       accion: 'Documento propio adjuntado a contrato',
       detalle: `${id} — ${nombre}`,

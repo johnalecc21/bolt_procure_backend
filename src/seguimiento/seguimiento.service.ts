@@ -84,6 +84,7 @@ export class SeguimientoService {
         });
         await this.prisma.hitoSeguimiento.update({ where: { id: hitoId }, data: { pagoGeneradoId: pago.id } });
         await this.auditLog.log({
+          companyId,
           usuario: actorNombre,
           accion: 'Pago generado por hito completado',
           detalle: `${hito.contratoId} — ${hito.label} (${hito.porcentaje}%) → $${monto.toLocaleString()}`,

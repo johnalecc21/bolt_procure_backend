@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthService } from './auth.service';
@@ -11,6 +12,9 @@ import type { AuthenticatedUser } from './types';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  // Public + unauthenticated, so it needs a much tighter cap than the global
+  // default to keep it from being used for account-creation spam.
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
   @Public()
   @Post('registro-proveedor')
   registerProveedor(@Body() dto: RegisterProveedorDto) {

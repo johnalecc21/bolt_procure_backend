@@ -83,6 +83,7 @@ export class PreguntasService {
     });
 
     await this.auditLog.log({
+      companyId,
       usuario: actorNombre,
       accion: 'Pregunta respondida',
       detalle: `${pregunta.requerimiento.titulo}: ${pregunta.pregunta}`,

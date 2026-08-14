@@ -27,23 +27,23 @@ export class AdjudicacionService {
 
   async confirmar(requerimientoId: string, actorNombre: string) {
     const adjudicacion = await this.getOrThrow(requerimientoId);
-    await this.prisma.adjudicacion.update({
-      where: { requerimientoId },
-      data: { confirmada: true },
-    });
-    await this.auditLog.log({
-      usuario: actorNombre,
-      accion: 'Adjudicación confirmada',
-      detalle: `${requerimientoId} → ${adjudicacion.proveedorId} ($${adjudicacion.precioFinal})`,
-    });
-
     // The provider needs to hear this the moment a human decides, not only
     // once the (separate, later) signature step completes — that's the real
     // "award letter" moment in procurement, even though it's conditional on
     // the contract still getting signed.
     const requerimiento = await this.prisma.requerimiento.findUnique({
       where: { id: requerimientoId },
-      select: { titulo: true },
+      select: { titulo: true, companyId: true },
+    });
+    await this.prisma.adjudicacion.update({
+      where: { requerimientoId },
+      data: { confirmada: true },
+    });
+    await this.auditLog.log({
+      companyId: requerimiento?.companyId,
+      usuario: actorNombre,
+      accion: 'Adjudicación confirmada',
+      detalle: `${requerimientoId} → ${adjudicacion.proveedorId} ($${adjudicacion.precioFinal})`,
     });
     const proveedor = await this.prisma.proveedorProfile.findUnique({
       where: { id: adjudicacion.proveedorId },
@@ -63,11 +63,16 @@ export class AdjudicacionService {
 
   async revisionLegal(requerimientoId: string, actorNombre: string) {
     await this.getOrThrow(requerimientoId);
+    const requerimiento = await this.prisma.requerimiento.findUniqueOrThrow({
+      where: { id: requerimientoId },
+      select: { companyId: true },
+    });
     await this.prisma.adjudicacion.update({
       where: { requerimientoId },
       data: { revisionLegal: true },
     });
     await this.auditLog.log({
+      companyId: requerimiento.companyId,
       usuario: actorNombre,
       accion: 'Revisión legal completada',
       detalle: `Contrato ${requerimientoId} desbloqueado para firma`,
@@ -147,6 +152,7 @@ export class AdjudicacionService {
     });
 
     await this.auditLog.log({
+      companyId: requerimiento.companyId,
       usuario: actorNombre,
       accion: 'Contrato firmado electrónicamente',
       detalle: `${requerimientoId} → ${proveedor.nombre}`,

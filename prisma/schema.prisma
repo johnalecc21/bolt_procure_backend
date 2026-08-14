@@ -175,6 +175,7 @@ model Company {
   matrizReglas   MatrizAprobacionRegla[]
   casosConsultor CasoConsultor[]
   invitaciones   Invitacion[]
+  auditLogs      AuditLogEntry[]
 
   @@map("companies")
 }
@@ -628,9 +629,16 @@ model AuditLogEntry {
   detalle   String
   motivo    String?
   createdAt DateTime @default(now())
+  // Nullable only because rows written before this column existed can't be
+  // backfilled reliably — every writer from here on always sets it. A cliente
+  // never sees another company's rows; only Interno sees the unscoped log
+  // (including legacy null-companyId rows).
+  companyId String?
 
-  usuarioUser User? @relation(fields: [usuarioId], references: [id])
+  usuarioUser User?    @relation(fields: [usuarioId], references: [id])
+  company     Company? @relation(fields: [companyId], references: [id])
 
+  @@index([companyId])
   @@map("audit_log")
 }
 

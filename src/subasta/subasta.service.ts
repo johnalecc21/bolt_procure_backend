@@ -8,9 +8,20 @@ export interface PujaSeed {
   monto: number;
 }
 
+export interface AuctionViewer {
+  portal: 'CLIENTE' | 'PROVEEDOR' | 'INTERNO';
+  companyId?: string;
+  proveedorId?: string;
+}
+
 @Injectable()
 export class SubastaService {
   constructor(private prisma: PrismaService) {}
+
+  async proveedorIdForUser(userId: string): Promise<string | undefined> {
+    const profile = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
+    return profile?.id;
+  }
 
   async getState(requerimientoId: string) {
     const session = await this.prisma.auctionSession.findUnique({
@@ -21,6 +32,60 @@ export class SubastaService {
       return { requerimientoId, status: EstadoSubasta.INACTIVA, deadline: null, pujas: [] };
     }
     return session;
+  }
+
+  // Cliente only sees auctions run by their own company; proveedor only ones
+  // they were actually invited to bid on (before or after bidding starts).
+  async canView(requerimientoId: string, viewer: AuctionViewer): Promise<boolean> {
+    if (viewer.portal === 'INTERNO') return false;
+    if (viewer.portal === 'CLIENTE') {
+      if (!viewer.companyId) return false;
+      const requerimiento = await this.prisma.requerimiento.findUnique({
+        where: { id: requerimientoId },
+        select: { companyId: true },
+      });
+      return requerimiento?.companyId === viewer.companyId;
+    }
+    if (!viewer.proveedorId) return false;
+    const invitado = await this.prisma.invitacion.findFirst({
+      where: { requerimientoId, proveedorId: viewer.proveedorId, enviada: true },
+      select: { id: true },
+    });
+    return !!invitado;
+  }
+
+  // Only the cliente company running the process can start/stop its auction.
+  async canControl(requerimientoId: string, viewer: AuctionViewer): Promise<boolean> {
+    if (viewer.portal !== 'CLIENTE' || !viewer.companyId) return false;
+    const requerimiento = await this.prisma.requerimiento.findUnique({
+      where: { id: requerimientoId },
+      select: { companyId: true },
+    });
+    return requerimiento?.companyId === viewer.companyId;
+  }
+
+  /**
+   * Cliente/Interno get the real leaderboard. Proveedor gets only their own
+   * puja plus a rank/participant count — never a rival's name or amount,
+   * matching the "never see rival identities or amounts" product guarantee
+   * (previously enforced only client-side, which any devtools user could
+   * bypass since the raw data was already on the wire).
+   */
+  buildView(state: Awaited<ReturnType<SubastaService['getState']>>, viewer: AuctionViewer) {
+    if (viewer.portal !== 'PROVEEDOR') {
+      return state;
+    }
+    const ordenados = [...state.pujas].sort((a, b) => a.monto - b.monto);
+    const miPuja = ordenados.find((p) => p.proveedorId === viewer.proveedorId) ?? null;
+    const miPosicion = miPuja ? ordenados.findIndex((p) => p.proveedorId === viewer.proveedorId) + 1 : 0;
+    return {
+      requerimientoId: state.requerimientoId,
+      status: state.status,
+      deadline: state.deadline,
+      miPuja,
+      miPosicion,
+      totalParticipantes: ordenados.length,
+    };
   }
 
   async iniciar(requerimientoId: string, durationMs: number, seed: PujaSeed[]) {

@@ -70,6 +70,7 @@ export class DisputasService {
       });
     }
     await this.auditLog.log({
+      companyId: disputa.companyId,
       usuario: actorNombre,
       accion: 'Disputa resuelta',
       detalle: `${id} — ${disputa.proveedor?.nombre ?? 'sin proveedor asociado'}`,

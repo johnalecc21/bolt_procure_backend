@@ -50,6 +50,7 @@ export class MatrizAprobacionService {
       }),
     ]);
     await this.auditLog.log({
+      companyId,
       usuario: actorNombre,
       accion: 'Matriz de aprobación actualizada',
       detalle: `${reglas.length} reglas configuradas`,
@@ -67,6 +68,7 @@ export class MatrizAprobacionService {
   async updateConfig(companyId: string, umbralContratoMarco: number, actorNombre: string) {
     await this.prisma.company.update({ where: { id: companyId }, data: { umbralContratoMarco } });
     await this.auditLog.log({
+      companyId,
       usuario: actorNombre,
       accion: 'Umbral de Contrato Marco actualizado',
       detalle: `Nuevo umbral: $${umbralContratoMarco.toLocaleString()}`,

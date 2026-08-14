@@ -35,6 +35,7 @@ export class VencimientosService {
       if (diasRestantes < 0) {
         await this.prisma.contrato.update({ where: { id: contrato.id }, data: { estado: EstadoContrato.VENCIDO } });
         await this.auditLog.log({
+          companyId: contrato.companyId,
           usuario: 'Sistema (cron vencimientos)',
           accion: 'Contrato vencido',
           detalle: `${contrato.id} venció el ${contrato.vigenciaFin.toISOString().slice(0, 10)}`,
