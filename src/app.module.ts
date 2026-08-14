@@ -4,7 +4,11 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { LoggerModule } from 'nestjs-pino';
+import type { Params } from 'nestjs-pino';
+import type { TransportTargetOptions } from 'pino';
+import type { IncomingMessage } from 'http';
 import Redis from 'ioredis';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -18,7 +22,6 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PortalGuard } from './common/guards/portal.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { UsuariosModule } from './usuarios/usuarios.module';
 import { RequerimientosModule } from './requerimientos/requerimientos.module';
 import { AprobacionesModule } from './aprobaciones/aprobaciones.module';
@@ -44,6 +47,58 @@ import { VencimientosModule } from './vencimientos/vencimientos.module';
     SentryModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService): Params => {
+        const isProd = config.get('NODE_ENV') === 'production';
+        const lokiHost = config.get<string>('LOKI_HOST');
+        const targets: TransportTargetOptions[] = [];
+
+        if (!isProd) {
+          targets.push({
+            target: 'pino-pretty',
+            level: 'debug',
+            options: { colorize: true, singleLine: true, translateTime: 'HH:MM:ss' },
+          });
+        }
+
+        // LOKI_HOST unset (e.g. Loki not running locally) means logs just
+        // print to console — shipping is skipped, nothing throws.
+        if (lokiHost) {
+          targets.push({
+            target: 'pino-loki',
+            level: 'info',
+            options: {
+              host: lokiHost,
+              basicAuth:
+                config.get('LOKI_USER') && config.get('LOKI_PASSWORD')
+                  ? { username: config.get('LOKI_USER'), password: config.get('LOKI_PASSWORD') }
+                  : undefined,
+              labels: { app: 'bolt-procure-backend', env: config.get('NODE_ENV', 'development') },
+              batching: true,
+              interval: 5,
+            },
+          });
+        }
+
+        return {
+          pinoHttp: {
+            level: isProd ? 'info' : 'debug',
+            transport: targets.length ? { targets } : undefined,
+            autoLogging: true,
+            redact: {
+              paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
+              remove: true,
+            },
+            customProps: (req: IncomingMessage & { user?: { id?: string; email?: string; portal?: string } }) => ({
+              userId: req.user?.id,
+              userEmail: req.user?.email,
+              portal: req.user?.portal,
+            }),
+          },
+        };
+      },
+    }),
     RedisModule,
     // Tracked by IP and runs before auth so abusive traffic is rejected
     // before we spend a Supabase round-trip verifying its token. Individual
@@ -87,7 +142,6 @@ import { VencimientosModule } from './vencimientos/vencimientos.module';
     { provide: APP_GUARD, useClass: PortalGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
-    { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
   ],
 })
 export class AppModule {}

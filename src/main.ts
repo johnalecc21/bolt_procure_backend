@@ -5,12 +5,16 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // bufferLogs holds Nest's own bootstrap logs until the Pino logger below
+  // is attached, so they go through the same pipeline instead of console.log.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(Logger));
   const config = app.get(ConfigService);
 
   // CSP off: this is a JSON API plus a Swagger UI page, and a strict default
@@ -34,7 +38,6 @@ async function bootstrap() {
 
   const port = config.get('PORT', 3001);
   await app.listen(port);
-  // eslint-disable-next-line no-console
-  console.log(`ProcureOS API listening on http://localhost:${port} (docs at /docs)`);
+  app.get(Logger).log(`ProcureOS API listening on http://localhost:${port} (docs at /docs)`, 'Bootstrap');
 }
 bootstrap();

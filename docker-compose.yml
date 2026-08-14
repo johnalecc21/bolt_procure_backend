@@ -9,5 +9,29 @@ services:
     volumes:
       - procureos_redisdata:/data
 
+  loki:
+    image: grafana/loki:3.3.0
+    container_name: bolt_procure_loki
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - procureos_lokidata:/loki
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: bolt_procure_grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - procureos_grafanadata:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - loki
+
 volumes:
   procureos_redisdata:
+  procureos_lokidata:
+  procureos_grafanadata:
