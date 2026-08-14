@@ -8,7 +8,7 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import type { Params } from 'nestjs-pino';
 import type { TransportTargetOptions } from 'pino';
-import type { IncomingMessage } from 'http';
+import type { IncomingMessage, ServerResponse } from 'http';
 import Redis from 'ioredis';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -58,7 +58,16 @@ import { VencimientosModule } from './vencimientos/vencimientos.module';
           targets.push({
             target: 'pino-pretty',
             level: 'debug',
-            options: { colorize: true, singleLine: true, translateTime: 'HH:MM:ss' },
+            options: {
+              colorize: true,
+              singleLine: true,
+              levelFirst: true,
+              translateTime: 'HH:MM:ss',
+              ignore: 'pid,hostname,name,context',
+              // pino-pretty runs in a worker thread, so messageFormat must be a
+              // serializable string — a function here silently fails to send.
+              messageFormat: '[{name}] [{context}] {msg}',
+            },
           });
         }
 
@@ -83,6 +92,7 @@ import { VencimientosModule } from './vencimientos/vencimientos.module';
 
         return {
           pinoHttp: {
+            name: 'bolt-procure-backend',
             level: isProd ? 'info' : 'debug',
             transport: targets.length ? { targets } : undefined,
             autoLogging: true,
@@ -90,11 +100,19 @@ import { VencimientosModule } from './vencimientos/vencimientos.module';
               paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
               remove: true,
             },
+            // Auto-logged request/response lines don't get a `context` from
+            // Nest's Logger, so we set one here — keeps every console line
+            // (app logs and HTTP logs alike) showing "[service] [context]".
             customProps: (req: IncomingMessage & { user?: { id?: string; email?: string; portal?: string } }) => ({
+              context: 'HTTP',
               userId: req.user?.id,
               userEmail: req.user?.email,
               portal: req.user?.portal,
             }),
+            customSuccessMessage: (req: IncomingMessage, res: ServerResponse) =>
+              `${req.method} ${req.url} ${res.statusCode}`,
+            customErrorMessage: (req: IncomingMessage, res: ServerResponse, err: Error) =>
+              `${req.method} ${req.url} ${res.statusCode} — ${err.message}`,
           },
         };
       },
