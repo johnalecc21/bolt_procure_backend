@@ -65,10 +65,10 @@ export class ProveedoresService {
         proveedorId: proveedor.id,
         documentos: {
           create: [
-            { nombre: 'RUT / NIT' },
-            { nombre: 'Estados financieros' },
-            { nombre: 'Certificado ISO / BASC / ESG' },
-            { nombre: 'Referencias comerciales' },
+            { nombre: 'RUT / NIT', categoria: 'LEGAL' },
+            { nombre: 'Estados financieros', categoria: 'FINANCIERO' },
+            { nombre: 'Certificado ISO / BASC / ESG', categoria: 'CERTIFICACIONES' },
+            { nombre: 'Referencias comerciales', categoria: 'REFERENCIAS' },
           ],
         },
       },

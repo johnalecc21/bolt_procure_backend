@@ -177,10 +177,10 @@ async function main() {
   if (existingDocs === 0) {
     await prisma.documentoHomologacion.createMany({
       data: [
-        { homologacionId: cloudsphereHomologacion.id, nombre: 'RUT / NIT', estado: 'VALIDADO' },
-        { homologacionId: cloudsphereHomologacion.id, nombre: 'Estados financieros', estado: 'VALIDADO' },
-        { homologacionId: cloudsphereHomologacion.id, nombre: 'Certificado ISO 27001', estado: 'VALIDADO', vigencia: new Date('2027-03-01') },
-        { homologacionId: cloudsphereHomologacion.id, nombre: 'Referencias comerciales', estado: 'VALIDADO' },
+        { homologacionId: cloudsphereHomologacion.id, nombre: 'RUT / NIT', categoria: 'LEGAL', estado: 'VALIDADO' },
+        { homologacionId: cloudsphereHomologacion.id, nombre: 'Estados financieros', categoria: 'FINANCIERO', estado: 'VALIDADO' },
+        { homologacionId: cloudsphereHomologacion.id, nombre: 'Certificado ISO 27001', categoria: 'CERTIFICACIONES', estado: 'VALIDADO', vigencia: new Date('2027-03-01') },
+        { homologacionId: cloudsphereHomologacion.id, nombre: 'Referencias comerciales', categoria: 'REFERENCIAS', estado: 'VALIDADO' },
       ],
     });
   }
@@ -212,10 +212,10 @@ async function main() {
     if (docsCount === 0) {
       await prisma.documentoHomologacion.createMany({
         data: [
-          { homologacionId: homologacion.id, nombre: 'RUT / NIT', estado: 'VALIDADO' },
-          { homologacionId: homologacion.id, nombre: 'Estados financieros', estado: 'VALIDADO' },
-          { homologacionId: homologacion.id, nombre: 'Certificado ISO / BASC / ESG', estado: 'VALIDADO' },
-          { homologacionId: homologacion.id, nombre: 'Referencias comerciales', estado: 'VALIDADO' },
+          { homologacionId: homologacion.id, nombre: 'RUT / NIT', categoria: 'LEGAL', estado: 'VALIDADO' },
+          { homologacionId: homologacion.id, nombre: 'Estados financieros', categoria: 'FINANCIERO', estado: 'VALIDADO' },
+          { homologacionId: homologacion.id, nombre: 'Certificado ISO / BASC / ESG', categoria: 'CERTIFICACIONES', estado: 'VALIDADO' },
+          { homologacionId: homologacion.id, nombre: 'Referencias comerciales', categoria: 'REFERENCIAS', estado: 'VALIDADO' },
         ],
       });
     }

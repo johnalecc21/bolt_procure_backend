@@ -1,4 +1,11 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { EstadoDocumento, EstadoHomologacion, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -58,11 +65,23 @@ export class HomologacionService {
     const proveedorId = await this.proveedorIdForUser(userId);
     const doc = await this.prisma.documentoHomologacion.findFirst({
       where: { id: documentoId, homologacion: { proveedorId } },
+      include: { homologacion: true },
     });
     if (!doc) throw new NotFoundException('Documento no encontrado.');
     if (!path.startsWith(`${proveedorId}/${documentoId}/`)) {
       throw new BadRequestException('Ruta de archivo inválida.');
     }
+
+    const estadoHomologacion = doc.homologacion.estado;
+    if (estadoHomologacion === EstadoHomologacion.EN_REVISION || estadoHomologacion === EstadoHomologacion.ZONA_GRIS) {
+      throw new ConflictException(
+        'Tu homologación está en revisión. No puedes modificar documentos hasta que Procurex resuelva.',
+      );
+    }
+    if (estadoHomologacion === EstadoHomologacion.APROBADO && doc.estado !== EstadoDocumento.VENCIDO) {
+      throw new ConflictException('Este documento ya fue validado. Solo puedes actualizar documentos vencidos.');
+    }
+
     return this.prisma.documentoHomologacion.update({
       where: { id: documentoId },
       data: { estado: EstadoDocumento.SUBIDO, storagePath: path },
@@ -102,6 +121,13 @@ export class HomologacionService {
       include: { documentos: true, proveedor: true },
     });
     if (!homologacion) throw new NotFoundException('Aún no has iniciado tu homologación.');
+    if (homologacion.estado === EstadoHomologacion.EN_REVISION) {
+      throw new ConflictException('Tu homologación ya fue enviada y está en revisión.');
+    }
+    if (homologacion.estado === EstadoHomologacion.ZONA_GRIS) {
+      throw new ConflictException('Tu homologación está en revisión manual por nuestro equipo de compliance.');
+    }
+    const estadoPrevio = homologacion.estado;
 
     const alertas: string[] = [];
     let score = 70;
@@ -147,11 +173,25 @@ export class HomologacionService {
     score = Math.max(0, Math.min(100, score));
     const estado = alertas.length > 0 ? EstadoHomologacion.ZONA_GRIS : EstadoHomologacion.EN_REVISION;
 
-    return this.prisma.homologacion.update({
+    const actualizado = await this.prisma.homologacion.update({
       where: { proveedorId },
       data: { estado, score, alertas, nitDetectado, fechaSolicitud: new Date() },
       include: { documentos: true },
     });
+
+    await this.auditLog.log({
+      usuarioId: userId,
+      usuario: homologacion.proveedor.nombre,
+      accion:
+        estadoPrevio === EstadoHomologacion.APROBADO
+          ? 'Homologación reenviada a revisión tras renovar documentos'
+          : estadoPrevio === EstadoHomologacion.RECHAZADO
+            ? 'Homologación reenviada a revisión tras rechazo'
+            : 'Homologación enviada a revisión',
+      detalle: `Score ${score}${alertas.length ? `, ${alertas.length} alerta(s)` : ''}`,
+    });
+
+    return actualizado;
   }
 
   cola() {

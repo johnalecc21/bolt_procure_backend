@@ -37,6 +37,7 @@ enum EstadoRequerimiento {
 }
 
 enum EstadoHomologacion {
+  BORRADOR
   EN_REVISION
   APROBADO
   RECHAZADO
@@ -48,6 +49,13 @@ enum EstadoDocumento {
   SUBIDO
   VALIDADO
   VENCIDO
+}
+
+enum CategoriaDocumento {
+  LEGAL
+  FINANCIERO
+  CERTIFICACIONES
+  REFERENCIAS
 }
 
 enum TipoContrato {
@@ -374,7 +382,7 @@ model ProveedorProfile {
 model Homologacion {
   id                  String             @id @default(cuid())
   proveedorId         String             @unique
-  estado              EstadoHomologacion @default(EN_REVISION)
+  estado              EstadoHomologacion @default(BORRADOR)
   score               Int                @default(0)
   alertas             String[]
   fechaSolicitud      DateTime           @default(now())
@@ -389,10 +397,11 @@ model Homologacion {
 }
 
 model DocumentoHomologacion {
-  id             String          @id @default(cuid())
+  id             String              @id @default(cuid())
   homologacionId String
   nombre         String
-  estado         EstadoDocumento @default(PENDIENTE)
+  categoria      CategoriaDocumento  @default(LEGAL)
+  estado         EstadoDocumento     @default(PENDIENTE)
   vigencia       DateTime?
   /// Path within the `homologacion-documentos` Supabase Storage bucket, set once a file is actually uploaded.
   storagePath    String?
