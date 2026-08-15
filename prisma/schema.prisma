@@ -201,6 +201,9 @@ model User {
   activo      Boolean   @default(true)
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
+  /// Null until the user explicitly accepts the Términos y Condiciones / Aviso de
+  /// Privacidad — gates a one-time acceptance modal on first entry to a portal.
+  terminosAceptadosEn DateTime?
 
   memberships               CompanyMembership[]
   proveedorProfile          ProveedorProfile?

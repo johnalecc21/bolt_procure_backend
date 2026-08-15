@@ -20,9 +20,10 @@ export class AuthService {
     role: Role;
     iniciales: string;
     cargo: string | null;
+    terminosAceptadosEn: Date | null;
   }) {
-    const { id, nombre, email, portal, role, iniciales, cargo } = user;
-    return { id, nombre, email, portal, role, iniciales, cargo };
+    const { id, nombre, email, portal, role, iniciales, cargo, terminosAceptadosEn } = user;
+    return { id, nombre, email, portal, role, iniciales, cargo, terminosAceptadosEn };
   }
 
   private async companiesForUser(userId: string) {
@@ -44,6 +45,14 @@ export class AuthService {
     const companies = await this.companiesForUser(userId);
     const activeCompany = companies.find((c) => c.id === companyId) ?? companies[0];
     return { user: this.userPublic(user), activeCompany, companies };
+  }
+
+  async aceptarTerminos(userId: string) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { terminosAceptadosEn: new Date() },
+    });
+    return this.userPublic(user);
   }
 
   async registerProveedor(dto: RegisterProveedorDto) {
@@ -84,6 +93,9 @@ export class AuthService {
             role: Role.PROVEEDOR,
             iniciales,
             cargo: 'Representante de la empresa',
+            // The frontend registration form requires checking "Acepto los
+            // Términos..." before this endpoint can be called at all.
+            terminosAceptadosEn: new Date(),
           },
         });
         await tx.companyMembership.create({ data: { userId: user.id, companyId: company.id } });

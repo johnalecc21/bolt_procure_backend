@@ -25,4 +25,9 @@ export class AuthController {
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.me(user.sub, user.companyId);
   }
+
+  @Post('aceptar-terminos')
+  aceptarTerminos(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.aceptarTerminos(user.sub);
+  }
 }
