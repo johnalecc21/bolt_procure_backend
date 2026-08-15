@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EstadoHomologacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import type { UpdatePerfilDto } from './dto/update-perfil.dto';
 
 const PALETTE = [
   'oklch(0.46 0.14 246)',
@@ -46,6 +47,28 @@ export class ProveedoresService {
     });
     if (!proveedor) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
     return proveedor;
+  }
+
+  async actualizarMiPerfil(userId: string, dto: UpdatePerfilDto) {
+    const proveedor = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
+    if (!proveedor) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
+    return this.prisma.proveedorProfile.update({
+      where: { userId },
+      data: {
+        ...(dto.nombre !== undefined ? { nombre: dto.nombre } : {}),
+        ...(dto.categorias !== undefined ? { categorias: dto.categorias } : {}),
+        ...(dto.ubicacion !== undefined ? { ubicacion: dto.ubicacion } : {}),
+      },
+    });
+  }
+
+  async completarOnboarding(userId: string) {
+    const proveedor = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
+    if (!proveedor) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
+    return this.prisma.proveedorProfile.update({
+      where: { userId },
+      data: { onboardingCompletado: true },
+    });
   }
 
   async createExterno(nombre: string) {

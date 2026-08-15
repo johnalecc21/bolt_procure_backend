@@ -354,19 +354,20 @@ model MatrizAprobacionRegla {
 // ---------------------------------------------------------------------------
 
 model ProveedorProfile {
-  id              String   @id @default(cuid())
-  userId          String?  @unique
-  nombre          String
-  iniciales       String
-  categorias      String[]
-  score           Int      @default(0)
-  ubicacion       String
-  certificaciones String[]
-  procesosGanados Int      @default(0)
-  entregasATiempo Int      @default(0)
-  disputasCount   Int      @default(0)
-  color           String
-  createdAt       DateTime @default(now())
+  id                    String   @id @default(cuid())
+  userId                String?  @unique
+  nombre                String
+  iniciales             String
+  categorias            String[]
+  score                 Int      @default(0)
+  ubicacion             String
+  certificaciones       String[]
+  procesosGanados       Int      @default(0)
+  entregasATiempo       Int      @default(0)
+  disputasCount         Int      @default(0)
+  color                 String
+  onboardingCompletado  Boolean  @default(false)
+  createdAt             DateTime @default(now())
 
   user         User?         @relation(fields: [userId], references: [id])
   homologacion Homologacion?
