@@ -1,23 +1,23 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { EstadoHomologacion, EstadoInvitacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProveedoresService } from '../proveedores/proveedores.service';
 import { UpsertOfertaDto } from './dto/upsert-oferta.dto';
 
 @Injectable()
 export class OfertasService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private proveedores: ProveedoresService,
+  ) {}
 
-  listByRequerimiento(requerimientoId: string) {
+  async listByRequerimiento(companyId: string, requerimientoId: string) {
+    const req = await this.prisma.requerimiento.findFirst({ where: { id: requerimientoId, companyId }, select: { id: true } });
+    if (!req) throw new NotFoundException('Requerimiento no encontrado.');
     return this.prisma.oferta.findMany({
       where: { requerimientoId },
       include: { proveedor: true },
     });
-  }
-
-  private async proveedorIdForUser(userId: string) {
-    const profile = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
-    if (!profile) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
-    return profile.id;
   }
 
   // The provider's own in-progress board: every proceso they've accepted to
@@ -28,7 +28,7 @@ export class OfertasService {
   // happen, but a provider with a real offer on file should never be told
   // there's nothing to see.
   async listMine(userId: string) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
     const [invitacionesAceptadas, ofertas] = await Promise.all([
       this.prisma.invitacion.findMany({
         where: {
@@ -75,7 +75,7 @@ export class OfertasService {
   }
 
   async mine(userId: string, requerimientoId: string) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
     const oferta = await this.prisma.oferta.findUnique({
       where: { requerimientoId_proveedorId: { requerimientoId, proveedorId } },
     });
@@ -95,7 +95,14 @@ export class OfertasService {
   }
 
   async upsert(userId: string, dto: UpsertOfertaDto) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
+    // Only a proveedor actually invited to this proceso can hold an oferta on it.
+    const invitado = await this.prisma.invitacion.findFirst({
+      where: { requerimientoId: dto.requerimientoId, proveedorId, enviada: true },
+    });
+    if (!invitado) {
+      throw new ForbiddenException('No tienes una invitación activa para este proceso.');
+    }
     const existing = await this.prisma.oferta.findUnique({
       where: { requerimientoId_proveedorId: { requerimientoId: dto.requerimientoId, proveedorId } },
     });
@@ -110,7 +117,7 @@ export class OfertasService {
   }
 
   async enviar(userId: string, requerimientoId: string) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
     const homologacion = await this.prisma.homologacion.findUnique({ where: { proveedorId } });
     if (homologacion?.estado !== EstadoHomologacion.APROBADO) {
       throw new ForbiddenException('Tu homologación debe estar aprobada para poder enviar ofertas.');
@@ -130,7 +137,7 @@ export class OfertasService {
   }
 
   async miHistorial(userId: string) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
     const misOfertas = await this.prisma.oferta.findMany({
       where: { proveedorId, enviada: true },
       include: { requerimiento: { include: { company: true, adjudicacion: true } } },
@@ -178,13 +185,14 @@ export class OfertasService {
     const miPromedio = misOfertas.length
       ? misOfertas.reduce((sum, o) => sum + o.precioTotal, 0) / misOfertas.length
       : 0;
-    const mercado = await this.prisma.oferta.findMany({
+    // An aggregate query, not findMany + reduce — this used to load every
+    // market oferta into memory just to average one column, unbounded and
+    // growing with every offer ever submitted in the category.
+    const mercadoAgg = await this.prisma.oferta.aggregate({
       where: { enviada: true, requerimiento: { categoria: { in: proveedor.categorias } } },
-      select: { precioTotal: true },
+      _avg: { precioTotal: true },
     });
-    const mercadoPromedio = mercado.length
-      ? mercado.reduce((sum, o) => sum + o.precioTotal, 0) / mercado.length
-      : miPromedio;
+    const mercadoPromedio = mercadoAgg._avg.precioTotal ?? miPromedio;
     const tuOfertaPromedioVsMercado = mercadoPromedio
       ? Math.round(((miPromedio - mercadoPromedio) / mercadoPromedio) * 100)
       : 0;

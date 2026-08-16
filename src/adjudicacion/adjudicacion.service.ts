@@ -16,17 +16,20 @@ export class AdjudicacionService {
     private notificaciones: NotificacionesService,
   ) {}
 
-  async findByRequerimiento(requerimientoId: string) {
+  async findByRequerimiento(companyId: string, requerimientoId: string) {
+    await this.ownedByCompany(companyId, requerimientoId);
     return this.prisma.adjudicacion.findUnique({ where: { requerimientoId } });
   }
 
-  async create(dto: CreateAdjudicacionDto) {
+  async create(companyId: string, dto: CreateAdjudicacionDto) {
+    await this.ownedByCompany(companyId, dto.requerimientoId);
     const year = new Date().getFullYear();
     const poId = `PO-${year}-${Math.floor(1000 + Math.random() * 9000)}`;
     return this.prisma.adjudicacion.create({ data: { ...dto, poId } });
   }
 
-  async confirmar(requerimientoId: string, actorNombre: string) {
+  async confirmar(companyId: string, requerimientoId: string, actorNombre: string) {
+    await this.ownedByCompany(companyId, requerimientoId);
     const adjudicacion = await this.getOrThrow(requerimientoId);
     // The provider needs to hear this the moment a human decides, not only
     // once the (separate, later) signature step completes — that's the real
@@ -62,7 +65,8 @@ export class AdjudicacionService {
     return { ok: true };
   }
 
-  async revisionLegal(requerimientoId: string, actorNombre: string) {
+  async revisionLegal(companyId: string, requerimientoId: string, actorNombre: string) {
+    await this.ownedByCompany(companyId, requerimientoId);
     await this.getOrThrow(requerimientoId);
     const requerimiento = await this.prisma.requerimiento.findUniqueOrThrow({
       where: { id: requerimientoId },
@@ -81,7 +85,8 @@ export class AdjudicacionService {
     return { ok: true };
   }
 
-  async firmar(requerimientoId: string, actorNombre: string, notificarPerdedoresOverride?: boolean) {
+  async firmar(companyId: string, requerimientoId: string, actorNombre: string, notificarPerdedoresOverride?: boolean) {
+    await this.ownedByCompany(companyId, requerimientoId);
     const adjudicacion = await this.getOrThrow(requerimientoId);
     if (!adjudicacion.confirmada) {
       throw new BadRequestException('Confirma la adjudicación antes de enviar a firma.');
@@ -174,21 +179,28 @@ export class AdjudicacionService {
         where: { requerimientoId, proveedorId: { not: adjudicacion.proveedorId } },
         include: { proveedor: { include: { user: true } } },
       });
-      for (const oferta of perdedores) {
-        const userId = oferta.proveedor.user?.id;
-        if (userId) {
-          await this.notificaciones.create(
-            userId,
-            'OFERTA',
-            'Proceso adjudicado a otro proveedor',
-            `${requerimiento.titulo} fue adjudicado a otro participante. Revisa el feedback en tu historial.`,
-            '/proveedor/historial',
-          );
-        }
-      }
+      await Promise.all(
+        perdedores
+          .map((oferta) => oferta.proveedor.user?.id)
+          .filter((userId): userId is string => !!userId)
+          .map((userId) =>
+            this.notificaciones.create(
+              userId,
+              'OFERTA',
+              'Proceso adjudicado a otro proveedor',
+              `${requerimiento.titulo} fue adjudicado a otro participante. Revisa el feedback en tu historial.`,
+              '/proveedor/historial',
+            ),
+          ),
+      );
     }
 
     return { ok: true, poId: adjudicacion.poId };
+  }
+
+  private async ownedByCompany(companyId: string, requerimientoId: string) {
+    const req = await this.prisma.requerimiento.findFirst({ where: { id: requerimientoId, companyId }, select: { id: true } });
+    if (!req) throw new NotFoundException('Requerimiento no encontrado.');
   }
 
   private async getOrThrow(requerimientoId: string) {

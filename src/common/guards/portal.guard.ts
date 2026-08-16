@@ -9,15 +9,15 @@ export class PortalGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const portal = this.reflector.getAllAndOverride<Portal>(PORTAL_KEY, [
+    const portals = this.reflector.getAllAndOverride<Portal[]>(PORTAL_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!portal) return true;
+    if (!portals || portals.length === 0) return true;
 
     const request = context.switchToHttp().getRequest();
     const user: AuthenticatedUser = request.user;
-    if (user?.portal !== portal) {
+    if (!portals.includes(user?.portal)) {
       throw new ForbiddenException('Este recurso pertenece a otro portal.');
     }
     return true;

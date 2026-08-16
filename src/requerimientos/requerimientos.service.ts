@@ -3,11 +3,25 @@ import { EstadoDocumento, EstadoHomologacion, EstadoRequerimiento, Prisma, Role,
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
-import { SupabaseService } from '../supabase/supabase.service';
+import { StorageService } from '../storage/storage.service';
 import { formatRequerimientoCodigo } from '../common/utils/codigo.util';
 import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
 
 const BUCKET = 'requerimientos-documentos';
+
+// Manual transitions allowed via PATCH /:id/estado. EN_LICITACION is reached
+// only through an approved Aprobación (aprobaciones.service.ts) and
+// ADJUDICADO only through AdjudicacionService.firmar() — both build real
+// records (aprobación resolution, Contrato + Hitos) alongside the state
+// change, so this generic endpoint must never be able to set them directly.
+const TRANSICIONES_MANUALES_PERMITIDAS: Partial<Record<EstadoRequerimiento, EstadoRequerimiento[]>> = {
+  [EstadoRequerimiento.BORRADOR]: [EstadoRequerimiento.PENDIENTE_APROBACION],
+  [EstadoRequerimiento.PENDIENTE_APROBACION]: [EstadoRequerimiento.BORRADOR],
+  [EstadoRequerimiento.EN_LICITACION]: [EstadoRequerimiento.EN_NEGOCIACION],
+  [EstadoRequerimiento.EN_NEGOCIACION]: [EstadoRequerimiento.EN_LICITACION],
+  [EstadoRequerimiento.ADJUDICADO]: [EstadoRequerimiento.EN_CUMPLIMIENTO],
+  [EstadoRequerimiento.EN_CUMPLIMIENTO]: [EstadoRequerimiento.CERRADO],
+};
 
 @Injectable()
 export class RequerimientosService {
@@ -15,7 +29,7 @@ export class RequerimientosService {
     private prisma: PrismaService,
     private auditLog: AuditLogService,
     private notificaciones: NotificacionesService,
-    private supabase: SupabaseService,
+    private storage: StorageService,
   ) {}
 
   // Notifies whoever can act right now: for UNICA that's everyone in the
@@ -186,7 +200,11 @@ export class RequerimientosService {
   }
 
   async updateEstado(companyId: string, id: string, estado: EstadoRequerimiento, actorNombre: string) {
-    await this.findOne(companyId, id);
+    const actual = await this.findOne(companyId, id);
+    const permitidos = TRANSICIONES_MANUALES_PERMITIDAS[actual.estado] ?? [];
+    if (!permitidos.includes(estado)) {
+      throw new BadRequestException(`No se puede pasar de ${actual.estado} a ${estado} directamente.`);
+    }
     const updated = await this.prisma.requerimiento.update({ where: { id }, data: { estado } });
     await this.auditLog.log({
       companyId,
@@ -232,15 +250,9 @@ export class RequerimientosService {
       data: { requerimientoId: id, nombre: filename },
     });
 
-    const safeName = filename.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const path = `${companyId}/${id}/${doc.id}/${safeName}`;
-    const { data, error } = await this.supabase.admin.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(path, { upsert: true });
-    if (error || !data) {
-      throw new BadRequestException(error?.message ?? 'No se pudo preparar la subida del archivo.');
-    }
-    return { docId: doc.id, path, token: data.token };
+    const path = `${companyId}/${id}/${doc.id}/${this.storage.safeFilename(filename)}`;
+    const uploadUrl = await this.storage.createUploadUrl(BUCKET, path);
+    return { docId: doc.id, ...uploadUrl };
   }
 
   async confirmarDocumento(companyId: string, id: string, docId: string, path: string, actorNombre: string) {
@@ -272,13 +284,8 @@ export class RequerimientosService {
     if (!doc) throw new NotFoundException('Documento no encontrado.');
     if (!doc.storagePath) throw new NotFoundException('Este documento todavía no tiene un archivo adjunto.');
 
-    const { data, error } = await this.supabase.admin.storage
-      .from(BUCKET)
-      .createSignedUrl(doc.storagePath, 300);
-    if (error || !data) {
-      throw new BadRequestException(error?.message ?? 'No se pudo generar el enlace de descarga.');
-    }
-    return { url: data.signedUrl, nombre: doc.nombre };
+    const { url } = await this.storage.createDownloadUrl(BUCKET, doc.storagePath);
+    return { url, nombre: doc.nombre };
   }
 
   // Adds providers beyond the shortlist chosen at creation — used any time

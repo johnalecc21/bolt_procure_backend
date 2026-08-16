@@ -28,6 +28,9 @@ export class ProveedoresService {
           : {}),
       },
       orderBy: { score: 'desc' },
+      // The directory has no per-caller scope to bound it by (it's meant to
+      // be browsed/filtered, not paged) — growth guard-rail, not page size.
+      take: 200,
     });
   }
 
@@ -37,7 +40,24 @@ export class ProveedoresService {
       include: { homologacion: true },
     });
     if (!proveedor) throw new NotFoundException('Proveedor no encontrado.');
+    // Directory viewers (other companies, Interno) only need to know a
+    // proveedor is homologado — alertas/nitDetectado are compliance-internal
+    // detail, not something a competitor or a client shortlisting them should see.
+    if (proveedor.homologacion) {
+      const { alertas: _alertas, nitDetectado: _nitDetectado, ...homologacionPublica } = proveedor.homologacion;
+      return { ...proveedor, homologacion: homologacionPublica };
+    }
     return proveedor;
+  }
+
+  // Was independently copy-pasted (findUnique + throw NotFoundException) into
+  // homologacion, contratos, invitaciones, ofertas, pagos and preguntas —
+  // every one of them just needs the id, not the full profile findByUserId
+  // below loads, so this is a lighter query as well as a single definition.
+  async findIdForUser(userId: string): Promise<string> {
+    const profile = await this.prisma.proveedorProfile.findUnique({ where: { userId }, select: { id: true } });
+    if (!profile) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
+    return profile.id;
   }
 
   async findByUserId(userId: string) {

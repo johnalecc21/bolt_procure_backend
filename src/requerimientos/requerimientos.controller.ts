@@ -36,6 +36,7 @@ export class RequerimientosController {
     return this.service.create(user.companyId, user.sub, dto);
   }
 
+  @Roles(Role.COMPRADOR, Role.ADMIN_CLIENTE)
   @Patch(':id/estado')
   updateEstado(
     @CurrentUser() user: AuthenticatedUser,

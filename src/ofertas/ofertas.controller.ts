@@ -13,8 +13,8 @@ export class OfertasController {
 
   @PortalOnly('CLIENTE')
   @Get('requerimiento/:id')
-  listByRequerimiento(@Param('id') id: string) {
-    return this.service.listByRequerimiento(id);
+  listByRequerimiento(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.service.listByRequerimiento(user.companyId, id);
   }
 
   @PortalOnly('PROVEEDOR')
