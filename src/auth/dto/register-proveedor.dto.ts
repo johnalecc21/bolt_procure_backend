@@ -15,6 +15,6 @@ export class RegisterProveedorDto {
   email: string;
 
   @IsString()
-  @MinLength(6)
+  @MinLength(8)
   password: string;
 }
