@@ -23,6 +23,8 @@ export class InternoService {
       where: consultorId ? { consultorId } : undefined,
       include: { company: true },
       orderBy: [{ prioridad: 'desc' }, { createdAt: 'asc' }],
+      // Growth guard-rail, not page size.
+      take: 200,
     });
   }
 
@@ -38,6 +40,9 @@ export class InternoService {
           take: 1,
         },
       },
+      orderBy: { nombre: 'asc' },
+      // Growth guard-rail, not page size.
+      take: 200,
     });
     return companies.map((c) => ({
       id: c.id,
@@ -115,7 +120,8 @@ export class InternoService {
   // --- Benchmark de mercado --------------------------------------------
 
   listBenchmark() {
-    return this.prisma.benchmarkEntry.findMany();
+    // Growth guard-rail, not page size.
+    return this.prisma.benchmarkEntry.findMany({ take: 200 });
   }
 
   async marcarValido(id: string) {

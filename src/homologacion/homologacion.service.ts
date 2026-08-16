@@ -3,38 +3,30 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { EstadoDocumento, EstadoHomologacion, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
-import { SupabaseService } from '../supabase/supabase.service';
-import { OcrService } from './ocr.service';
-import { OfacService } from './ofac.service';
+import { ProveedoresService } from '../proveedores/proveedores.service';
+import { StorageService } from '../storage/storage.service';
+import { HomologacionScoringService } from './homologacion-scoring.service';
 
 const BUCKET = 'homologacion-documentos';
 
 @Injectable()
 export class HomologacionService {
-  private readonly logger = new Logger(HomologacionService.name);
 
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
-    private supabase: SupabaseService,
-    private ocr: OcrService,
-    private ofac: OfacService,
+    private proveedores: ProveedoresService,
+    private storage: StorageService,
+    private scoring: HomologacionScoringService,
   ) {}
 
-  private async proveedorIdForUser(userId: string) {
-    const profile = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
-    if (!profile) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
-    return profile.id;
-  }
-
   async mine(userId: string) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
     const homologacion = await this.prisma.homologacion.findUnique({
       where: { proveedorId },
       include: { documentos: true },
@@ -44,25 +36,18 @@ export class HomologacionService {
   }
 
   async crearUrlSubida(userId: string, documentoId: string, filename: string) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
     const doc = await this.prisma.documentoHomologacion.findFirst({
       where: { id: documentoId, homologacion: { proveedorId } },
     });
     if (!doc) throw new NotFoundException('Documento no encontrado.');
 
-    const safeName = filename.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const path = `${proveedorId}/${documentoId}/${safeName}`;
-    const { data, error } = await this.supabase.admin.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(path, { upsert: true });
-    if (error || !data) {
-      throw new BadRequestException(error?.message ?? 'No se pudo preparar la subida del archivo.');
-    }
-    return { path, token: data.token, signedUrl: data.signedUrl };
+    const path = `${proveedorId}/${documentoId}/${this.storage.safeFilename(filename)}`;
+    return this.storage.createUploadUrl(BUCKET, path);
   }
 
   async subirDocumento(userId: string, documentoId: string, path: string) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
     const doc = await this.prisma.documentoHomologacion.findFirst({
       where: { id: documentoId, homologacion: { proveedorId } },
       include: { homologacion: true },
@@ -97,7 +82,7 @@ export class HomologacionService {
     if (!doc || !doc.storagePath) throw new NotFoundException('Documento no encontrado.');
 
     if (portal === 'PROVEEDOR') {
-      const proveedorId = await this.proveedorIdForUser(userId);
+      const proveedorId = await this.proveedores.findIdForUser(userId);
       if (doc.homologacion.proveedorId !== proveedorId) {
         throw new ForbiddenException('Este documento no te pertenece.');
       }
@@ -105,17 +90,11 @@ export class HomologacionService {
       throw new ForbiddenException('No tienes acceso a este documento.');
     }
 
-    const { data, error } = await this.supabase.admin.storage
-      .from(BUCKET)
-      .createSignedUrl(doc.storagePath, 300);
-    if (error || !data) {
-      throw new BadRequestException(error?.message ?? 'No se pudo generar el enlace de descarga.');
-    }
-    return { url: data.signedUrl };
+    return this.storage.createDownloadUrl(BUCKET, doc.storagePath);
   }
 
   async enviar(userId: string) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
     const homologacion = await this.prisma.homologacion.findUnique({
       where: { proveedorId },
       include: { documentos: true, proveedor: true },
@@ -129,48 +108,10 @@ export class HomologacionService {
     }
     const estadoPrevio = homologacion.estado;
 
-    const alertas: string[] = [];
-    let score = 70;
-    let nitDetectado: string | null = null;
-
-    for (const doc of homologacion.documentos) {
-      if (!doc.storagePath) continue;
-      const filename = doc.storagePath.split('/').pop() ?? doc.storagePath;
-      const { data, error } = await this.supabase.admin.storage.from(BUCKET).download(doc.storagePath);
-      if (error || !data) {
-        this.logger.warn(`No se pudo descargar ${doc.storagePath}: ${error?.message}`);
-        alertas.push(`No se pudo leer el documento "${doc.nombre}".`);
-        continue;
-      }
-      const buffer = Buffer.from(await data.arrayBuffer());
-      const text = await this.ocr.extractText(buffer, filename);
-      if (!text) {
-        alertas.push(`No se pudo extraer texto del documento "${doc.nombre}" (OCR).`);
-        continue;
-      }
-      if (doc.nombre.toLowerCase().includes('nit') || doc.nombre.toLowerCase().includes('rut')) {
-        const digitsOnly = text.replace(/[^0-9]/g, '');
-        const match = digitsOnly.match(/\d{9,10}/);
-        if (!match) {
-          alertas.push(`No se detectó un número de NIT/RUT válido en "${doc.nombre}".`);
-        } else {
-          nitDetectado = match[0];
-          score += 10;
-        }
-      }
-    }
-
-    const ofacResult = await this.ofac.checkName(homologacion.proveedor.nombre);
-    if (ofacResult.matched) {
-      alertas.push(
-        `Posible coincidencia en la lista OFAC/SDN: "${ofacResult.matchedName}" (similitud ${Math.round((ofacResult.similarity ?? 0) * 100)}%).`,
-      );
-      score = Math.min(score, 20);
-    } else {
-      score += 10;
-    }
-
-    score = Math.max(0, Math.min(100, score));
+    const { score, alertas, nitDetectado } = await this.scoring.evaluar(
+      homologacion.documentos,
+      homologacion.proveedor.nombre,
+    );
     const estado = alertas.length > 0 ? EstadoHomologacion.ZONA_GRIS : EstadoHomologacion.EN_REVISION;
 
     const actualizado = await this.prisma.homologacion.update({
@@ -214,17 +155,22 @@ export class HomologacionService {
     });
     if (!homologacion) throw new NotFoundException('Homologación no encontrada.');
 
-    await this.prisma.homologacion.update({
-      where: { proveedorId },
-      data: {
-        estado: estado as EstadoHomologacion,
-        score,
-        proximaRevalidacion: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365),
-      },
-    });
-    if (estado === 'APROBADO') {
-      await this.prisma.proveedorProfile.update({ where: { id: proveedorId }, data: { score } });
-    }
+    // Both writes must land together — a homologación left APROBADO with a
+    // stale ProveedorProfile.score would silently corrupt the public
+    // directory ranking (ordered by that same score) and offer matching.
+    await this.prisma.$transaction([
+      this.prisma.homologacion.update({
+        where: { proveedorId },
+        data: {
+          estado: estado as EstadoHomologacion,
+          score,
+          proximaRevalidacion: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365),
+        },
+      }),
+      ...(estado === 'APROBADO'
+        ? [this.prisma.proveedorProfile.update({ where: { id: proveedorId }, data: { score } })]
+        : []),
+    ]);
     await this.auditLog.log({
       usuario: actorNombre,
       accion: estado === 'APROBADO' ? 'Homologación aprobada' : 'Homologación rechazada',

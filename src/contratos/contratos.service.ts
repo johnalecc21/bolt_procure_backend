@@ -2,7 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { TipoContrato } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
-import { SupabaseService } from '../supabase/supabase.service';
+import { ProveedoresService } from '../proveedores/proveedores.service';
+import { StorageService } from '../storage/storage.service';
 import { formatContratoCodigo } from '../common/utils/codigo.util';
 import { EmitirPoDto } from './dto/emitir-po.dto';
 
@@ -13,7 +14,8 @@ export class ContratosService {
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
-    private supabase: SupabaseService,
+    private proveedores: ProveedoresService,
+    private storage: StorageService,
   ) {}
 
   list(companyId: string, params?: { categoria?: string; query?: string }) {
@@ -92,23 +94,19 @@ export class ContratosService {
     return po;
   }
 
-  private async proveedorIdForUser(userId: string) {
-    const profile = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
-    if (!profile) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
-    return profile.id;
-  }
 
   async listMine(userId: string) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
     return this.prisma.contrato.findMany({
       where: { requerimiento: { adjudicacion: { proveedorId } } },
       orderBy: { vigenciaFin: 'asc' },
       include: { hitos: { orderBy: { orden: 'asc' } }, company: true },
+      take: 200,
     });
   }
 
   async findOneMine(userId: string, id: string) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
     const contrato = await this.prisma.contrato.findFirst({
       where: { id, requerimiento: { adjudicacion: { proveedorId } } },
       include: {
@@ -133,15 +131,8 @@ export class ContratosService {
     const contrato = await this.prisma.contrato.findFirst({ where: { id, companyId } });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
 
-    const safeName = filename.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    const path = `${companyId}/${id}/${safeName}`;
-    const { data, error } = await this.supabase.admin.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(path, { upsert: true });
-    if (error || !data) {
-      throw new BadRequestException(error?.message ?? 'No se pudo preparar la subida del archivo.');
-    }
-    return { path, token: data.token };
+    const path = `${companyId}/${id}/${this.storage.safeFilename(filename)}`;
+    return this.storage.createUploadUrl(BUCKET, path);
   }
 
   async adjuntarArchivo(companyId: string, id: string, path: string, nombre: string, actorNombre: string) {
@@ -168,18 +159,13 @@ export class ContratosService {
     const contrato =
       portal === 'PROVEEDOR'
         ? await this.prisma.contrato.findFirst({
-            where: { id, requerimiento: { adjudicacion: { proveedorId: await this.proveedorIdForUser(companyIdOrUserId) } } },
+            where: { id, requerimiento: { adjudicacion: { proveedorId: await this.proveedores.findIdForUser(companyIdOrUserId) } } },
           })
         : await this.prisma.contrato.findFirst({ where: { id, companyId: companyIdOrUserId } });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
     if (!contrato.archivoStoragePath) throw new NotFoundException('Este contrato no tiene un documento propio adjunto.');
 
-    const { data, error } = await this.supabase.admin.storage
-      .from(BUCKET)
-      .createSignedUrl(contrato.archivoStoragePath, 300);
-    if (error || !data) {
-      throw new BadRequestException(error?.message ?? 'No se pudo generar el enlace de descarga.');
-    }
-    return { url: data.signedUrl, nombre: contrato.archivoNombre };
+    const { url } = await this.storage.createDownloadUrl(BUCKET, contrato.archivoStoragePath);
+    return { url, nombre: contrato.archivoNombre };
   }
 }

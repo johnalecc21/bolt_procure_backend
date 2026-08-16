@@ -16,6 +16,8 @@ export class DisputasService {
       where: { companyId },
       include: { proveedor: true, mediador: true },
       orderBy: { createdAt: 'desc' },
+      // Growth guard-rail, not page size — this screen filters client-side.
+      take: 200,
     });
   }
 
@@ -84,6 +86,9 @@ export class DisputasService {
     return this.prisma.disputa.findMany({
       include: { proveedor: true, mediador: true, company: true },
       orderBy: { createdAt: 'desc' },
+      // Cross-tenant queue with no natural per-caller scope to bound it by —
+      // growth guard-rail, not page size.
+      take: 200,
     });
   }
 }

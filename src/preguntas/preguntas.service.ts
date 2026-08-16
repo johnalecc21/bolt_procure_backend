@@ -3,6 +3,7 @@ import { Portal } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { ProveedoresService } from '../proveedores/proveedores.service';
 import type { AuthenticatedUser } from '../auth/types';
 
 @Injectable()
@@ -11,19 +12,14 @@ export class PreguntasService {
     private prisma: PrismaService,
     private auditLog: AuditLogService,
     private notificaciones: NotificacionesService,
+    private proveedores: ProveedoresService,
   ) {}
-
-  private async proveedorIdForUser(userId: string) {
-    const profile = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
-    if (!profile) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
-    return profile.id;
-  }
 
   // Proveedor sees only their own questions on this proceso; Cliente sees every
   // question asked by any proveedor, scoped to their company.
   async list(user: AuthenticatedUser, requerimientoId: string) {
     if (user.portal === Portal.PROVEEDOR) {
-      const proveedorId = await this.proveedorIdForUser(user.sub);
+      const proveedorId = await this.proveedores.findIdForUser(user.sub);
       return this.prisma.pregunta.findMany({
         where: { requerimientoId, proveedorId },
         orderBy: { createdAt: 'asc' },
@@ -37,7 +33,7 @@ export class PreguntasService {
   }
 
   async preguntar(userId: string, requerimientoId: string, texto: string) {
-    const proveedorId = await this.proveedorIdForUser(userId);
+    const proveedorId = await this.proveedores.findIdForUser(userId);
     // Only a proveedor actually invited to this proceso can ask about it.
     const invitado = await this.prisma.invitacion.findFirst({
       where: { requerimientoId, proveedorId, enviada: true },

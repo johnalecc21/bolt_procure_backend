@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Inject, Logger } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -9,8 +9,10 @@ import {
 } from '@nestjs/websockets';
 import { Role } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
+import type { Redis } from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import { REDIS_CLIENT } from '../redis/redis.constants';
 import { SubastaService, PujaSeed, AuctionViewer } from './subasta.service';
 
 interface SocketUser extends AuctionViewer {
@@ -36,17 +38,28 @@ interface CerrarPayload {
 
 const CONTROL_ROLES = new Set<Role>([Role.COMPRADOR, Role.ADMIN_CLIENTE]);
 
-@WebSocketGateway({ namespace: '/subasta', cors: { origin: '*' } })
+// Decorator options are evaluated at module-load time, before Nest's DI
+// container exists, so this can't go through ConfigService like main.ts's
+// REST CORS does — read the same env var directly instead (actual auth is
+// enforced by the verified Supabase token in the handshake regardless, this
+// is defense in depth to match the REST origin restriction).
+@WebSocketGateway({ namespace: '/subasta', cors: { origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173', credentials: true } })
 export class SubastaGateway implements OnGatewayInit {
   @WebSocketServer() server: Server;
 
   private logger = new Logger(SubastaGateway.name);
   private intervals = new Map<string, ReturnType<typeof setInterval>>();
+  private readonly TICK_MS = 5000;
+  // Shorter than TICK_MS so a lock from an instance that died mid-round
+  // expires before the next tick would need it, instead of stalling the
+  // auction until the lock's TTL catches up.
+  private readonly TICK_LOCK_TTL_MS = 4500;
 
   constructor(
     private subasta: SubastaService,
     private supabase: SupabaseService,
     private prisma: PrismaService,
+    @Inject(REDIS_CLIENT) private redis: Redis,
   ) {}
 
   // Auth as a Socket.IO middleware (not the OnGatewayConnection lifecycle
@@ -55,6 +68,12 @@ export class SubastaGateway implements OnGatewayInit {
   // otherwise races the async Supabase/Prisma lookups below and can reach
   // 'join'/'iniciar' before the socket's user is attached.
   afterInit(server: Server) {
+    // Cross-instance broadcasting (server.in(room).fetchSockets()/emit() in
+    // broadcastState() below) is handled by attaching the Redis adapter to
+    // the root io.Server in main.ts (RedisIoAdapter) — a namespaced gateway's
+    // `server` here is actually the Namespace, not the root Server, and
+    // Namespace has no .adapter() method, so that has to happen at bootstrap
+    // instead of in this hook.
     server.use((socket, next) => {
       this.authenticate(socket)
         .then((user) => {
@@ -147,13 +166,22 @@ export class SubastaGateway implements OnGatewayInit {
   private scheduleTicks(requerimientoId: string, durationMs: number) {
     this.clearTicks(requerimientoId);
     const interval = setInterval(async () => {
+      // Every instance that thinks it's driving this auction runs this same
+      // interval (a reconnect can land 'iniciar' on a different instance
+      // than the one already ticking) — a per-round lock means only one of
+      // them actually nudges the price and broadcasts each round, instead of
+      // two instances independently decrementing it.
+      const lockKey = `subasta:tick-lock:${requerimientoId}`;
+      const acquired = await this.redis.set(lockKey, '1', 'PX', this.TICK_LOCK_TTL_MS, 'NX');
+      if (!acquired) return;
+
       const state = await this.subasta.nudge(requerimientoId);
       if (!state) {
         this.clearTicks(requerimientoId);
         return;
       }
       await this.broadcastState(requerimientoId, state);
-    }, 5000);
+    }, this.TICK_MS);
     this.intervals.set(requerimientoId, interval);
 
     setTimeout(() => this.clearTicks(requerimientoId), durationMs + 1000);

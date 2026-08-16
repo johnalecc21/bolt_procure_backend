@@ -1,5 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { createWorker } from 'tesseract.js';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { createWorker, Worker } from 'tesseract.js';
 import { PDFParse } from 'pdf-parse';
 
 const IMAGE_MIME_BY_EXT: Record<string, string> = {
@@ -9,8 +9,21 @@ const IMAGE_MIME_BY_EXT: Record<string, string> = {
 };
 
 @Injectable()
-export class OcrService {
+export class OcrService implements OnModuleDestroy {
   private readonly logger = new Logger(OcrService.name);
+  // Spinning up a Tesseract worker is the expensive part, not recognizing a
+  // single image — reuse one lazily-created worker across every call instead
+  // of paying that startup cost per document. Concurrent recognize() calls
+  // on the same worker queue internally rather than corrupting each other,
+  // so this is safe to share across a Promise.all of documents.
+  private worker: Promise<Worker> | null = null;
+
+  private getWorker(): Promise<Worker> {
+    if (!this.worker) {
+      this.worker = createWorker('spa+eng');
+    }
+    return this.worker;
+  }
 
   /** Extracts whatever text it can find in the document. Returns '' if the format is unreadable. */
   async extractText(buffer: Buffer, filename: string): Promise<string> {
@@ -27,20 +40,23 @@ export class OcrService {
         }
       }
       if (ext in IMAGE_MIME_BY_EXT) {
-        const worker = await createWorker('spa+eng');
-        try {
-          const {
-            data: { text },
-          } = await worker.recognize(buffer);
-          return text.trim();
-        } finally {
-          await worker.terminate();
-        }
+        const worker = await this.getWorker();
+        const {
+          data: { text },
+        } = await worker.recognize(buffer);
+        return text.trim();
       }
       return '';
     } catch (err) {
       this.logger.warn(`No se pudo extraer texto de ${filename}: ${(err as Error).message}`);
       return '';
+    }
+  }
+
+  async onModuleDestroy() {
+    if (this.worker) {
+      const worker = await this.worker;
+      await worker.terminate();
     }
   }
 }

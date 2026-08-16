@@ -20,6 +20,9 @@ export class SeguimientoService {
       where: { companyId },
       orderBy: { vigenciaFin: 'asc' },
       include: { hitos: { orderBy: { orden: 'asc' } } },
+      // Growth guard-rail, not page size — same cap as contratos.service.ts's
+      // list(), which queries the same table.
+      take: 200,
     });
   }
 
@@ -74,16 +77,22 @@ export class SeguimientoService {
         const monto = Math.round((hito.contrato.monto * hito.porcentaje) / 100);
         const fechaPagoPactada = new Date();
         fechaPagoPactada.setDate(fechaPagoPactada.getDate() + hito.contrato.condicionesPagoDias);
-        const pago = await this.prisma.pagoPO.create({
-          data: {
-            contratoId: hito.contratoId,
-            proveedorId,
-            monto,
-            fechaEmision: new Date(),
-            fechaPagoPactada,
-          },
+        // A PagoPO created without its hito ever being linked back to it would
+        // be an orphaned payment record with no hito pointing at it — both
+        // writes need to land together.
+        const [pago] = await this.prisma.$transaction(async (tx) => {
+          const pago = await tx.pagoPO.create({
+            data: {
+              contratoId: hito.contratoId,
+              proveedorId,
+              monto,
+              fechaEmision: new Date(),
+              fechaPagoPactada,
+            },
+          });
+          await tx.hitoSeguimiento.update({ where: { id: hitoId }, data: { pagoGeneradoId: pago.id } });
+          return [pago];
         });
-        await this.prisma.hitoSeguimiento.update({ where: { id: hitoId }, data: { pagoGeneradoId: pago.id } });
         await this.auditLog.log({
           companyId,
           usuario: actorNombre,

@@ -15,6 +15,8 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { SupabaseModule } from './supabase/supabase.module';
 import { RedisModule } from './redis/redis.module';
+import { StorageModule } from './storage/storage.module';
+import { envValidationSchema } from './config/env.validation';
 import { REDIS_CLIENT } from './redis/redis.constants';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -41,11 +43,12 @@ import { SubastaModule } from './subasta/subasta.module';
 import { InternoModule } from './interno/interno.module';
 import { PreguntasModule } from './preguntas/preguntas.module';
 import { VencimientosModule } from './vencimientos/vencimientos.module';
+import { AnaliticaModule } from './analitica/analitica.module';
 
 @Module({
   imports: [
     SentryModule.forRoot(),
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validationSchema: envValidationSchema }),
     ScheduleModule.forRoot(),
     LoggerModule.forRootAsync({
       inject: [ConfigService],
@@ -130,6 +133,7 @@ import { VencimientosModule } from './vencimientos/vencimientos.module';
     }),
     PrismaModule,
     SupabaseModule,
+    StorageModule,
     HealthModule,
     AuthModule,
     UsuariosModule,
@@ -151,6 +155,7 @@ import { VencimientosModule } from './vencimientos/vencimientos.module';
     InternoModule,
     PreguntasModule,
     VencimientosModule,
+    AnaliticaModule,
   ],
   controllers: [AppController],
   providers: [

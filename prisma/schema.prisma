@@ -272,6 +272,8 @@ model Requerimiento {
   contratos      Contrato[]
   preguntas      Pregunta[]
 
+  @@index([companyId])
+  @@index([solicitanteId])
   @@map("requerimientos")
 }
 
@@ -397,6 +399,7 @@ model Homologacion {
   proveedor  ProveedorProfile        @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
   documentos DocumentoHomologacion[]
 
+  @@index([estado])
   @@map("homologaciones")
 }
 
@@ -433,6 +436,7 @@ model Oferta {
   proveedor     ProveedorProfile @relation(fields: [proveedorId], references: [id])
 
   @@unique([requerimientoId, proveedorId])
+  @@index([proveedorId])
   @@map("ofertas")
 }
 
@@ -501,6 +505,8 @@ model Contrato {
   padre         Contrato?         @relation("ContratoPadreHijas", fields: [contratoPadreId], references: [id])
   hijas         Contrato[]        @relation("ContratoPadreHijas")
 
+  @@index([companyId])
+  @@index([estado])
   @@map("contratos")
 }
 
@@ -543,6 +549,7 @@ model Disputa {
   mediador  User?             @relation("Mediador", fields: [mediadorId], references: [id])
   mensajes  MensajeDisputa[]
 
+  @@index([companyId])
   @@map("disputas")
 }
 
@@ -583,6 +590,8 @@ model Invitacion {
   proveedor     ProveedorProfile @relation(fields: [proveedorId], references: [id])
   company       Company          @relation(fields: [companyId], references: [id])
 
+  @@index([proveedorId])
+  @@index([requerimientoId])
   @@map("invitaciones")
 }
 
@@ -602,6 +611,8 @@ model Pregunta {
   proveedor     ProveedorProfile @relation(fields: [proveedorId], references: [id])
   respondidoPor User?            @relation("PreguntaRespondidoPor", fields: [respondidoPorId], references: [id])
 
+  @@index([requerimientoId])
+  @@index([proveedorId])
   @@map("preguntas")
 }
 
@@ -619,6 +630,7 @@ model PagoPO {
   proveedor  ProveedorProfile @relation(fields: [proveedorId], references: [id])
   hitoOrigen HitoSeguimiento?
 
+  @@index([proveedorId])
   @@map("pagos_po")
 }
 
@@ -641,6 +653,7 @@ model Notificacion {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, leida])
   @@map("notificaciones")
 }
 
@@ -682,6 +695,8 @@ model CasoConsultor {
   consultor User    @relation("Consultor", fields: [consultorId], references: [id])
   company   Company @relation(fields: [companyId], references: [id])
 
+  @@index([consultorId])
+  @@index([companyId])
   @@map("casos_consultor")
 }
 

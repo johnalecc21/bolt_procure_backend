@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EstadoSubasta } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProveedoresService } from '../proveedores/proveedores.service';
 
 export interface PujaSeed {
   proveedorId: string;
@@ -16,11 +17,20 @@ export interface AuctionViewer {
 
 @Injectable()
 export class SubastaService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private proveedores: ProveedoresService,
+  ) {}
 
+  // Non-throwing, unlike ProveedoresService.findIdForUser — a socket/REST
+  // caller here should just end up with no proveedorId (silently unable to
+  // bid) rather than have the whole auth/handshake reject.
   async proveedorIdForUser(userId: string): Promise<string | undefined> {
-    const profile = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
-    return profile?.id;
+    try {
+      return await this.proveedores.findIdForUser(userId);
+    } catch {
+      return undefined;
+    }
   }
 
   async getState(requerimientoId: string) {
