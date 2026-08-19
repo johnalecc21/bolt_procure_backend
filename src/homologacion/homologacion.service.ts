@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoDocumento, EstadoHomologacion, Role } from '@prisma/client';
+import { EstadoDocumento, EstadoHomologacion, Portal, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
@@ -74,19 +74,19 @@ export class HomologacionService {
   }
 
   /** Proveedores can only fetch a link for their own docs; Compliance/Ops can fetch any (for review). */
-  async crearUrlDescarga(userId: string, portal: string, role: Role, documentoId: string) {
+  async crearUrlDescarga(userId: string, portal: Portal, role: Role, documentoId: string) {
     const doc = await this.prisma.documentoHomologacion.findUnique({
       where: { id: documentoId },
       include: { homologacion: true },
     });
     if (!doc || !doc.storagePath) throw new NotFoundException('Documento no encontrado.');
 
-    if (portal === 'PROVEEDOR') {
+    if (portal === Portal.PROVEEDOR) {
       const proveedorId = await this.proveedores.findIdForUser(userId);
       if (doc.homologacion.proveedorId !== proveedorId) {
         throw new ForbiddenException('Este documento no te pertenece.');
       }
-    } else if (!(portal === 'INTERNO' && role === Role.COMPLIANCE_OPS)) {
+    } else if (!(portal === Portal.INTERNO && role === Role.COMPLIANCE_OPS)) {
       throw new ForbiddenException('No tienes acceso a este documento.');
     }
 
@@ -139,6 +139,10 @@ export class HomologacionService {
     return this.prisma.homologacion.findMany({
       where: { estado: { in: [EstadoHomologacion.EN_REVISION, EstadoHomologacion.ZONA_GRIS] } },
       include: { documentos: true, proveedor: true },
+      orderBy: { fechaSolicitud: 'asc' },
+      // Cross-tenant queue with no natural per-caller scope to bound it by —
+      // growth guard-rail, not page size.
+      take: 200,
     });
   }
 

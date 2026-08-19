@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Contrato, EstadoContrato, Role } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import type { Redis } from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -42,6 +43,12 @@ export class VencimientosService {
     }
     try {
       return await this.procesar();
+    } catch (err) {
+      // @Cron runs outside the HTTP pipeline, so the global HttpExceptionFilter
+      // (and its @SentryExceptionCaptured()) never sees this — capture explicitly.
+      Sentry.captureException(err);
+      this.logger.error('Falló el procesamiento de vencimientos.', err instanceof Error ? err.stack : err);
+      throw err;
     } finally {
       await this.redis.del(LOCK_KEY).catch(() => undefined);
     }
@@ -77,7 +84,17 @@ export class VencimientosService {
 
     const ahora = Date.now();
     const contadores: Contadores = { vencidos: 0, porVencerNuevos: 0, recordatoriosEnviados: 0 };
-    await Promise.all(contratos.map((c) => this.procesarContrato(c, ahora, responsablesPorEmpresa, contadores)));
+    // allSettled (not all): one bad contract must not cost the rest of the
+    // batch their update for today — each failure is reported individually.
+    const resultados = await Promise.allSettled(
+      contratos.map((c) => this.procesarContrato(c, ahora, responsablesPorEmpresa, contadores)),
+    );
+    resultados.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        Sentry.captureException(r.reason);
+        this.logger.error(`Falló el procesamiento del contrato ${contratos[i].id}.`, r.reason instanceof Error ? r.reason.stack : r.reason);
+      }
+    });
 
     this.logger.log(
       `Vencimientos procesados: ${contratos.length} contratos revisados, ${contadores.vencidos} marcados VENCIDO, ${contadores.porVencerNuevos} nuevos POR_VENCER, ${contadores.recordatoriosEnviados} recordatorios enviados.`,

@@ -93,29 +93,31 @@ export class ProveedoresService {
 
   async createExterno(nombre: string) {
     const iniciales = nombre.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
-    const proveedor = await this.prisma.proveedorProfile.create({
-      data: {
-        nombre: nombre.trim(),
-        iniciales: iniciales || 'PV',
-        categorias: ['Pendiente de homologación'],
-        ubicacion: 'Por confirmar',
-        certificaciones: [],
-        color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
-      },
-    });
-    await this.prisma.homologacion.create({
-      data: {
-        proveedorId: proveedor.id,
-        documentos: {
-          create: [
-            { nombre: 'RUT / NIT', categoria: 'LEGAL' },
-            { nombre: 'Estados financieros', categoria: 'FINANCIERO' },
-            { nombre: 'Certificado ISO / BASC / ESG', categoria: 'CERTIFICACIONES' },
-            { nombre: 'Referencias comerciales', categoria: 'REFERENCIAS' },
-          ],
+    return this.prisma.$transaction(async (tx) => {
+      const proveedor = await tx.proveedorProfile.create({
+        data: {
+          nombre: nombre.trim(),
+          iniciales: iniciales || 'PV',
+          categorias: ['Pendiente de homologación'],
+          ubicacion: 'Por confirmar',
+          certificaciones: [],
+          color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
         },
-      },
+      });
+      await tx.homologacion.create({
+        data: {
+          proveedorId: proveedor.id,
+          documentos: {
+            create: [
+              { nombre: 'RUT / NIT', categoria: 'LEGAL' },
+              { nombre: 'Estados financieros', categoria: 'FINANCIERO' },
+              { nombre: 'Certificado ISO / BASC / ESG', categoria: 'CERTIFICACIONES' },
+              { nombre: 'Referencias comerciales', categoria: 'REFERENCIAS' },
+            ],
+          },
+        },
+      });
+      return proveedor;
     });
-    return proveedor;
   }
 }

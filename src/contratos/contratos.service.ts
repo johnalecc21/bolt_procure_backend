@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { TipoContrato } from '@prisma/client';
+import { Portal, TipoContrato } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
@@ -155,9 +155,9 @@ export class ContratosService {
   }
 
   /** Cliente can fetch a link for any contrato in their company; proveedor only for their own. */
-  async crearUrlDescarga(portal: string, companyIdOrUserId: string, id: string) {
+  async crearUrlDescarga(portal: Portal, companyIdOrUserId: string, id: string) {
     const contrato =
-      portal === 'PROVEEDOR'
+      portal === Portal.PROVEEDOR
         ? await this.prisma.contrato.findFirst({
             where: { id, requerimiento: { adjudicacion: { proveedorId: await this.proveedores.findIdForUser(companyIdOrUserId) } } },
           })

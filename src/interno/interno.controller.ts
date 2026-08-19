@@ -42,11 +42,13 @@ export class InternoController {
     return this.service.impersonar(id, user.sub, user.email, dto.motivo);
   }
 
+  @Roles(Role.COMPLIANCE_OPS)
   @Get('benchmark')
   listBenchmark() {
     return this.service.listBenchmark();
   }
 
+  @Roles(Role.COMPLIANCE_OPS)
   @Post('benchmark/:id/marcar-valido')
   marcarValido(@Param('id') id: string) {
     return this.service.marcarValido(id);

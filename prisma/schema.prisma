@@ -230,6 +230,7 @@ model CompanyMembership {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@unique([userId, companyId])
+  @@index([companyId])
   @@map("company_memberships")
 }
 
@@ -457,6 +458,7 @@ model Adjudicacion {
 
   requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
 
+  @@index([proveedorId])
   @@map("adjudicaciones")
 }
 

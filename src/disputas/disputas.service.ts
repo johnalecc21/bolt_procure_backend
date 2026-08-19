@@ -48,6 +48,8 @@ export class DisputasService {
   }
 
   async asignarMediador(id: string, mediadorId: string) {
+    const disputa = await this.prisma.disputa.findFirst({ where: { id }, select: { id: true } });
+    if (!disputa) throw new NotFoundException('Disputa no encontrada.');
     return this.prisma.disputa.update({
       where: { id },
       data: { mediadorId, estado: EstadoDisputa.EN_MEDIACION },
@@ -60,6 +62,8 @@ export class DisputasService {
     impacto: 'positivo' | 'negativo',
     actorNombre: string,
   ) {
+    const existente = await this.prisma.disputa.findFirst({ where: { id }, select: { id: true } });
+    if (!existente) throw new NotFoundException('Disputa no encontrada.');
     const disputa = await this.prisma.disputa.update({
       where: { id },
       data: { estado: EstadoDisputa.RESUELTA, resueltoAt: new Date() },

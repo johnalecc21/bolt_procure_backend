@@ -23,6 +23,13 @@ export class AdjudicacionService {
 
   async create(companyId: string, dto: CreateAdjudicacionDto) {
     await this.ownedByCompany(companyId, dto.requerimientoId);
+    const oferta = await this.prisma.oferta.findFirst({
+      where: { requerimientoId: dto.requerimientoId, proveedorId: dto.proveedorId, enviada: true },
+      select: { id: true },
+    });
+    if (!oferta) {
+      throw new BadRequestException('Ese proveedor no presentó oferta para este requerimiento.');
+    }
     const year = new Date().getFullYear();
     const poId = `PO-${year}-${Math.floor(1000 + Math.random() * 9000)}`;
     return this.prisma.adjudicacion.create({ data: { ...dto, poId } });
@@ -119,13 +126,21 @@ export class AdjudicacionService {
         ? TipoContrato.CONTRATO
         : TipoContrato.PO;
 
-    const [, , contrato] = await this.prisma.$transaction([
-      this.prisma.adjudicacion.update({ where: { requerimientoId }, data: { firmado: true, notificarPerdedores } }),
-      this.prisma.requerimiento.update({
+    // Seed a sensible default delivery timeline off the agreed plazoDias so every
+    // signed contract starts with real tracking — the client can rename, add,
+    // remove, or reschedule these afterward from the Seguimiento screen.
+    const entrega = new Date(hoy);
+    entrega.setDate(entrega.getDate() + adjudicacion.plazoDias);
+    const cierre = new Date(entrega);
+    cierre.setDate(cierre.getDate() + 5);
+
+    const contrato = await this.prisma.$transaction(async (tx) => {
+      await tx.adjudicacion.update({ where: { requerimientoId }, data: { firmado: true, notificarPerdedores } });
+      await tx.requerimiento.update({
         where: { id: requerimientoId },
         data: { estado: EstadoRequerimiento.ADJUDICADO },
-      }),
-      this.prisma.contrato.create({
+      });
+      const contrato = await tx.contrato.create({
         data: {
           companyId: requerimiento.companyId,
           requerimientoId,
@@ -137,24 +152,17 @@ export class AdjudicacionService {
           vigenciaFin,
           condicionesPagoDias: adjudicacion.condicionesPagoDias,
         },
-      }),
-    ]);
-
-    // Seed a sensible default delivery timeline off the agreed plazoDias so every
-    // signed contract starts with real tracking — the client can rename, add,
-    // remove, or reschedule these afterward from the Seguimiento screen.
-    const entrega = new Date(hoy);
-    entrega.setDate(entrega.getDate() + adjudicacion.plazoDias);
-    const cierre = new Date(entrega);
-    cierre.setDate(cierre.getDate() + 5);
-    // Default 30/40/30 payment split — the client can adjust each hito's
-    // porcentaje afterward from Seguimiento, before marking it completado.
-    await this.prisma.hitoSeguimiento.createMany({
-      data: [
-        { contratoId: contrato.id, label: 'Inicio del contrato', comprometido: hoy, orden: 0, porcentaje: 30 },
-        { contratoId: contrato.id, label: 'Entrega', comprometido: entrega, orden: 1, porcentaje: 40 },
-        { contratoId: contrato.id, label: 'Cierre y conformidad', comprometido: cierre, orden: 2, porcentaje: 30 },
-      ],
+      });
+      // Default 30/40/30 payment split — the client can adjust each hito's
+      // porcentaje afterward from Seguimiento, before marking it completado.
+      await tx.hitoSeguimiento.createMany({
+        data: [
+          { contratoId: contrato.id, label: 'Inicio del contrato', comprometido: hoy, orden: 0, porcentaje: 30 },
+          { contratoId: contrato.id, label: 'Entrega', comprometido: entrega, orden: 1, porcentaje: 40 },
+          { contratoId: contrato.id, label: 'Cierre y conformidad', comprometido: cierre, orden: 2, porcentaje: 30 },
+        ],
+      });
+      return contrato;
     });
 
     await this.auditLog.log({
