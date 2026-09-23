@@ -45,6 +45,7 @@ import { PreguntasModule } from './preguntas/preguntas.module';
 import { VencimientosModule } from './vencimientos/vencimientos.module';
 import { AnaliticaModule } from './analitica/analitica.module';
 import { EvaluacionesModule } from './evaluaciones/evaluaciones.module';
+import { VitrinaModule } from './vitrina/vitrina.module';
 
 @Module({
   imports: [
@@ -158,6 +159,7 @@ import { EvaluacionesModule } from './evaluaciones/evaluaciones.module';
     VencimientosModule,
     AnaliticaModule,
     EvaluacionesModule,
+    VitrinaModule,
   ],
   controllers: [AppController],
   providers: [

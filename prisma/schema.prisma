@@ -81,6 +81,12 @@ enum Moneda {
   BRL
 }
 
+enum TipoArchivoVitrina {
+  IMAGEN
+  BROCHURE
+  CATALOGO
+}
+
 enum ResultadoLista {
   SIN_COINCIDENCIA
   COINCIDENCIA
@@ -401,34 +407,42 @@ model MatrizAprobacionRegla {
 // ---------------------------------------------------------------------------
 
 model ProveedorProfile {
-  id                    String   @id @default(cuid())
-  userId                String?  @unique
-  nombre                String
-  iniciales             String
-  categorias            String[]
-  score                 Int      @default(0)
-  ubicacion             String
-  sitioWeb              String?
-  certificaciones       String[]
-  procesosGanados       Int      @default(0)
-  entregasATiempo       Int      @default(0)
-  disputasCount         Int      @default(0)
-  color                 String
-  onboardingCompletado  Boolean  @default(false)
+  id                   String   @id @default(cuid())
+  userId               String?  @unique
+  nombre               String
+  iniciales            String
+  categorias           String[]
+  score                Int      @default(0)
+  ubicacion            String
+  sitioWeb             String?
+  certificaciones      String[]
+  procesosGanados      Int      @default(0)
+  entregasATiempo      Int      @default(0)
+  disputasCount        Int      @default(0)
+  color                String
+  onboardingCompletado Boolean  @default(false)
   // Denormalized from EvaluacionDesempeno (0-100), recomputed on every new
   // evaluation so directory listings don't aggregate on each request.
-  desempenoPromedio     Float?
-  evaluacionesCount     Int      @default(0)
-  createdAt             DateTime @default(now())
+  desempenoPromedio    Float?
+  evaluacionesCount    Int      @default(0)
+  // Public showcase ("vitrina") content the proveedor manages itself.
+  descripcion          String?
+  telefonoContacto     String?
+  emailContacto        String?
+  videoUrl             String?
+  vitrinaVistas        Int      @default(0)
+  createdAt            DateTime @default(now())
 
-  user         User?                 @relation(fields: [userId], references: [id])
-  homologacion Homologacion?
-  ofertas      Oferta[]
-  invitaciones Invitacion[]
-  pagos        PagoPO[]
-  disputas     Disputa[]
-  preguntas    Pregunta[]
-  evaluaciones EvaluacionDesempeno[]
+  user            User?                 @relation(fields: [userId], references: [id])
+  homologacion    Homologacion?
+  ofertas         Oferta[]
+  invitaciones    Invitacion[]
+  pagos           PagoPO[]
+  disputas        Disputa[]
+  preguntas       Pregunta[]
+  evaluaciones    EvaluacionDesempeno[]
+  archivosVitrina ArchivoVitrina[]
+  itemsCatalogo   ItemCatalogo[]
 
   @@map("proveedor_profiles")
 }
@@ -856,4 +870,44 @@ model EvaluacionDesempeno {
   @@index([contratoId])
   @@index([companyId])
   @@map("evaluaciones_desempeno")
+}
+
+/// Image or PDF (brochure / catálogo) shown on the proveedor's public
+/// vitrina. Files live in the private `vitrina-proveedores` bucket and are
+/// served through short-lived signed URLs.
+model ArchivoVitrina {
+  id          String             @id @default(cuid())
+  proveedorId String
+  tipo        TipoArchivoVitrina
+  titulo      String
+  storagePath String
+  orden       Int                @default(0)
+  createdAt   DateTime           @default(now())
+
+  proveedor ProveedorProfile @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+
+  @@index([proveedorId])
+  @@map("archivos_vitrina")
+}
+
+/// One product or service in the proveedor's catalog. Also searchable from
+/// the client directory, so buyers find the proveedor by what it sells.
+model ItemCatalogo {
+  id               String   @id @default(cuid())
+  proveedorId      String
+  nombre           String
+  descripcion      String?
+  categoria        String?
+  unidad           String?
+  precioReferencia Int?
+  moneda           Moneda?
+  imagenPath       String?
+  orden            Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  proveedor ProveedorProfile @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+
+  @@index([proveedorId])
+  @@map("items_catalogo")
 }

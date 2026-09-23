@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoDocumento, EstadoHomologacion } from '@prisma/client';
+import { EstadoHomologacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DOCUMENTOS_HOMOLOGACION_INICIALES } from '../homologacion/homologacion-documentos.const';
 import type { UpdatePerfilDto } from './dto/update-perfil.dto';
@@ -24,8 +24,16 @@ export class ProveedoresService {
         homologacion: { estado: EstadoHomologacion.APROBADO },
         ...(params?.categoria ? { categorias: { has: params.categoria } } : {}),
         ...(params?.minScore ? { score: { gte: params.minScore } } : {}),
+        // Buyers search by what they need, not only by company name — so the
+        // proveedor's own description and catalog items are searchable too.
         ...(params?.query
-          ? { nombre: { contains: params.query, mode: 'insensitive' } }
+          ? {
+              OR: [
+                { nombre: { contains: params.query, mode: 'insensitive' } },
+                { descripcion: { contains: params.query, mode: 'insensitive' } },
+                { itemsCatalogo: { some: { nombre: { contains: params.query, mode: 'insensitive' } } } },
+              ],
+            }
           : {}),
       },
       orderBy: { score: 'desc' },
@@ -33,52 +41,6 @@ export class ProveedoresService {
       // be browsed/filtered, not paged) — growth guard-rail, not page size.
       take: 200,
     });
-  }
-
-  /**
-   * Only what a prospective client should see before any contact: no
-   * contacts, alertas, NIT or document files — just the verified facts.
-   */
-  async vitrina(id: string) {
-    const proveedor = await this.prisma.proveedorProfile.findFirst({
-      where: { id, homologacion: { estado: EstadoHomologacion.APROBADO } },
-      include: {
-        homologacion: {
-          select: {
-            score: true,
-            proximaRevalidacion: true,
-            documentos: {
-              where: { estado: EstadoDocumento.VALIDADO },
-              select: { categoria: true, vigencia: true },
-            },
-          },
-        },
-      },
-    });
-    if (!proveedor) throw new NotFoundException('Proveedor no encontrado.');
-    const ahora = new Date();
-    const categoriasVerificadas = [
-      ...new Set(
-        proveedor.homologacion!.documentos.filter((d) => !d.vigencia || d.vigencia > ahora).map((d) => d.categoria),
-      ),
-    ];
-    return {
-      id: proveedor.id,
-      nombre: proveedor.nombre,
-      iniciales: proveedor.iniciales,
-      color: proveedor.color,
-      categorias: proveedor.categorias,
-      ubicacion: proveedor.ubicacion,
-      certificaciones: proveedor.certificaciones,
-      score: proveedor.score,
-      procesosGanados: proveedor.procesosGanados,
-      entregasATiempo: proveedor.entregasATiempo,
-      desempenoPromedio: proveedor.desempenoPromedio,
-      evaluacionesCount: proveedor.evaluacionesCount,
-      homologadoHasta: proveedor.homologacion!.proximaRevalidacion,
-      categoriasVerificadas,
-      miembroDesde: proveedor.createdAt,
-    };
   }
 
   async findOne(id: string) {
