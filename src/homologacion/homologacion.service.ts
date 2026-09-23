@@ -11,6 +11,7 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { StorageService } from '../storage/storage.service';
 import { HomologacionScoringService } from './homologacion-scoring.service';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
 
 const BUCKET = 'homologacion-documentos';
 
@@ -23,6 +24,7 @@ export class HomologacionService {
     private proveedores: ProveedoresService,
     private storage: StorageService,
     private scoring: HomologacionScoringService,
+    private notificaciones: NotificacionesService,
   ) {}
 
   async mine(userId: string) {
@@ -63,7 +65,11 @@ export class HomologacionService {
         'Tu homologación está en revisión. No puedes modificar documentos hasta que Procurex resuelva.',
       );
     }
-    if (estadoHomologacion === EstadoHomologacion.APROBADO && doc.estado !== EstadoDocumento.VENCIDO) {
+    // An approved proveedor can still renew expired documents and add the
+    // optional ones it never uploaded — those go to Compliance one by one
+    // (validarDocumento) without reopening the whole homologación.
+    const opcionalNuevo = !doc.obligatorio && doc.estado === EstadoDocumento.PENDIENTE;
+    if (estadoHomologacion === EstadoHomologacion.APROBADO && doc.estado !== EstadoDocumento.VENCIDO && !opcionalNuevo) {
       throw new ConflictException('Este documento ya fue validado. Solo puedes actualizar documentos vencidos.');
     }
 
@@ -154,11 +160,55 @@ export class HomologacionService {
     return actualizado;
   }
 
+  /** Pending reviews: whole homologaciones, plus approved ones with individual documents awaiting validation. */
   cola() {
     return this.prisma.homologacion.findMany({
-      where: { estado: { in: [EstadoHomologacion.EN_REVISION, EstadoHomologacion.ZONA_GRIS] } },
+      where: {
+        OR: [
+          { estado: { in: [EstadoHomologacion.EN_REVISION, EstadoHomologacion.ZONA_GRIS] } },
+          { estado: EstadoHomologacion.APROBADO, documentos: { some: { estado: EstadoDocumento.SUBIDO } } },
+        ],
+      },
       include: { documentos: true, proveedor: true, verificaciones: { orderBy: { lista: 'asc' } } },
     });
+  }
+
+  /** Compliance validates (or rejects) a single document uploaded after the homologación was approved. */
+  async validarDocumento(documentoId: string, valido: boolean, actorNombre: string, motivo?: string) {
+    const doc = await this.prisma.documentoHomologacion.findUnique({
+      where: { id: documentoId },
+      include: { homologacion: { include: { proveedor: true } } },
+    });
+    if (!doc) throw new NotFoundException('Documento no encontrado.');
+    if (doc.estado !== EstadoDocumento.SUBIDO) {
+      throw new ConflictException('Solo se pueden validar documentos subidos y pendientes de revisión.');
+    }
+    if (doc.homologacion.estado !== EstadoHomologacion.APROBADO) {
+      throw new ConflictException('Este documento se revisa junto con la homologación completa.');
+    }
+    const actualizado = await this.prisma.documentoHomologacion.update({
+      where: { id: documentoId },
+      data: valido ? { estado: EstadoDocumento.VALIDADO } : { estado: EstadoDocumento.PENDIENTE, storagePath: null },
+    });
+    const proveedor = doc.homologacion.proveedor;
+    await this.auditLog.log({
+      usuario: actorNombre,
+      accion: valido ? 'Documento de homologación validado' : 'Documento de homologación rechazado',
+      detalle: `${proveedor.nombre} — ${doc.nombre}`,
+      motivo,
+    });
+    if (proveedor.userId) {
+      await this.notificaciones.create(
+        proveedor.userId,
+        'PROVEEDOR',
+        valido ? 'Documento validado' : 'Documento rechazado',
+        valido
+          ? `"${doc.nombre}" fue validado y ya cuenta para los clientes que lo exigen.`
+          : `"${doc.nombre}" fue rechazado${motivo ? `: ${motivo}` : ''}. Súbelo de nuevo desde tu homologación.`,
+        '/proveedor/homologacion',
+      );
+    }
+    return actualizado;
   }
 
   /**
@@ -178,8 +228,8 @@ export class HomologacionService {
       include: { proveedor: true },
     });
     if (!homologacion) throw new NotFoundException('Homologación no encontrada.');
-    if (resultado === ResultadoLista.PENDIENTE_MANUAL) {
-      throw new BadRequestException('Registra el resultado de la consulta, no un pendiente.');
+    if (resultado !== ResultadoLista.SIN_COINCIDENCIA && resultado !== ResultadoLista.COINCIDENCIA) {
+      throw new BadRequestException('Registra el resultado de la consulta: sin coincidencia o coincidencia.');
     }
 
     const verificacion = await this.prisma.verificacionLista.upsert({
@@ -233,7 +283,9 @@ export class HomologacionService {
     if (!homologacion) throw new NotFoundException('Homologación no encontrada.');
     if (estado === 'APROBADO') {
       const bloqueantes = homologacion.verificaciones.filter(
-        (v) => v.resultado === ResultadoLista.PENDIENTE_MANUAL || v.resultado === ResultadoLista.COINCIDENCIA,
+        // An unreachable list is as unresolved as a pending manual check —
+        // Compliance records the outcome after checking the source directly.
+        (v) => v.resultado !== ResultadoLista.SIN_COINCIDENCIA,
       );
       if (bloqueantes.length > 0) {
         throw new ConflictException(

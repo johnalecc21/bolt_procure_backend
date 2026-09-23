@@ -32,7 +32,12 @@ export class AuthService {
       where: { userId, activo: true },
       include: { company: true },
     });
-    return memberships.map((m) => ({ id: m.company.id, nombre: m.company.nombre }));
+    return memberships.map((m) => ({
+      id: m.company.id,
+      nombre: m.company.nombre,
+      pais: m.company.pais,
+      monedaBase: m.company.monedaBase,
+    }));
   }
 
   /**

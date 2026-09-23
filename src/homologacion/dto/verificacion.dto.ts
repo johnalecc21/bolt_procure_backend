@@ -6,11 +6,7 @@ export class RegistrarVerificacionDto {
   @MaxLength(40)
   lista: string;
 
-  @IsIn([
-    ResultadoLista.SIN_COINCIDENCIA,
-    ResultadoLista.COINCIDENCIA,
-    ResultadoLista.NO_DISPONIBLE,
-  ])
+  @IsIn([ResultadoLista.SIN_COINCIDENCIA, ResultadoLista.COINCIDENCIA])
   resultado: ResultadoLista;
 
   @IsOptional()

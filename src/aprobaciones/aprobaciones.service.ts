@@ -67,7 +67,7 @@ export class AprobacionesService {
     const items = await this.prisma.aprobacion.findMany({
       where: { estado: EstadoAprobacion.PENDIENTE, requerimiento: { companyId } },
       include: {
-        requerimiento: { select: { titulo: true, solicitante: { select: { nombre: true } } } },
+        requerimiento: { select: { titulo: true, moneda: true, solicitante: { select: { nombre: true } } } },
       },
       orderBy: [{ urgente: 'desc' }, { createdAt: 'asc' }],
     });

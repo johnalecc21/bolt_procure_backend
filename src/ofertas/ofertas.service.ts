@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoHomologacion, EstadoInvitacion } from '@prisma/client';
+import { EstadoHomologacion, EstadoInvitacion, Moneda } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { UpsertOfertaDto } from './dto/upsert-oferta.dto';
@@ -36,7 +36,7 @@ export class OfertasService {
           enviada: true,
           estado: { in: [EstadoInvitacion.VISTA, EstadoInvitacion.RESPONDIDA] },
         },
-        include: { company: true, requerimiento: { select: { titulo: true, categoria: true } } },
+        include: { company: true, requerimiento: { select: { titulo: true, categoria: true, moneda: true } } },
       }),
       this.prisma.oferta.findMany({
         where: { proveedorId },
@@ -46,7 +46,15 @@ export class OfertasService {
 
     const porRequerimiento = new Map<
       string,
-      { requerimientoId: string; titulo: string; cliente: string; categoria: string; fechaLimite: Date; oferta: { enviada: boolean; precioTotal: number } | null }
+      {
+        requerimientoId: string;
+        titulo: string;
+        cliente: string;
+        categoria: string;
+        moneda: Moneda;
+        fechaLimite: Date;
+        oferta: { enviada: boolean; precioTotal: number } | null;
+      }
     >();
     for (const inv of invitacionesAceptadas) {
       if (!inv.requerimientoId) continue;
@@ -55,6 +63,7 @@ export class OfertasService {
         titulo: inv.requerimiento?.titulo ?? '',
         cliente: inv.company.nombre,
         categoria: inv.requerimiento?.categoria ?? inv.categoria,
+        moneda: inv.requerimiento?.moneda ?? Moneda.USD,
         fechaLimite: inv.fechaLimite,
         oferta: null,
       });
@@ -65,6 +74,7 @@ export class OfertasService {
         titulo: o.requerimiento.titulo,
         cliente: o.requerimiento.company.nombre,
         categoria: o.requerimiento.categoria,
+        moneda: o.requerimiento.moneda,
         fechaLimite: o.requerimiento.fechaLimite,
         oferta: { enviada: o.enviada, precioTotal: o.precioTotal },
       });
@@ -175,6 +185,7 @@ export class OfertasService {
         cliente: o.requerimiento.company.nombre,
         fecha: o.createdAt,
         monto: o.precioTotal,
+        moneda: o.requerimiento.moneda,
         resultado,
         feedback,
         ...awardTerms,
@@ -182,14 +193,25 @@ export class OfertasService {
     });
 
     const proveedor = await this.prisma.proveedorProfile.findUniqueOrThrow({ where: { id: proveedorId } });
-    const miPromedio = misOfertas.length
-      ? misOfertas.reduce((sum, o) => sum + o.precioTotal, 0) / misOfertas.length
+    // Averages only make sense within one currency: compare in the one this
+    // proveedor quotes in most, against the market in that same currency.
+    const conteoMonedas = new Map<Moneda, number>();
+    for (const o of misOfertas) {
+      conteoMonedas.set(o.requerimiento.moneda, (conteoMonedas.get(o.requerimiento.moneda) ?? 0) + 1);
+    }
+    const monedaPrincipal = [...conteoMonedas.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? Moneda.USD;
+    const ofertasEnMoneda = misOfertas.filter((o) => o.requerimiento.moneda === monedaPrincipal);
+    const miPromedio = ofertasEnMoneda.length
+      ? ofertasEnMoneda.reduce((sum, o) => sum + o.precioTotal, 0) / ofertasEnMoneda.length
       : 0;
     // An aggregate query, not findMany + reduce — this used to load every
     // market oferta into memory just to average one column, unbounded and
     // growing with every offer ever submitted in the category.
     const mercadoAgg = await this.prisma.oferta.aggregate({
-      where: { enviada: true, requerimiento: { categoria: { in: proveedor.categorias } } },
+      where: {
+        enviada: true,
+        requerimiento: { categoria: { in: proveedor.categorias }, moneda: monedaPrincipal },
+      },
       _avg: { precioTotal: true },
     });
     const mercadoPromedio = mercadoAgg._avg.precioTotal ?? miPromedio;

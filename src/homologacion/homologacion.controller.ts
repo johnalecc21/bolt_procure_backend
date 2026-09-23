@@ -10,6 +10,7 @@ import { UploadUrlDto } from './dto/upload-url.dto';
 import { ConfirmUploadDto } from './dto/confirm-upload.dto';
 import { RegistrarVerificacionDto } from './dto/verificacion.dto';
 import { UpdateRequisitosDto } from './dto/requisitos.dto';
+import { ValidarDocumentoDto } from './dto/validar-documento.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('homologacion')
@@ -70,6 +71,13 @@ export class HomologacionController {
     @Body() dto: ResolverDto,
   ) {
     return this.service.resolver(proveedorId, dto.estado, dto.score, user.email, dto.motivo);
+  }
+
+  @PortalOnly('INTERNO')
+  @Roles(Role.COMPLIANCE_OPS)
+  @Post('documentos/:id/validar')
+  validarDocumento(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ValidarDocumentoDto) {
+    return this.service.validarDocumento(id, dto.valido, user.email, dto.motivo);
   }
 
   @PortalOnly('INTERNO')

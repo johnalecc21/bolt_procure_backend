@@ -14,7 +14,7 @@ export class InvitacionesService {
     const proveedorId = await this.proveedores.findIdForUser(userId);
     return this.prisma.invitacion.findMany({
       where: { proveedorId, enviada: true },
-      include: { company: true, requerimiento: { select: { titulo: true } } },
+      include: { company: true, requerimiento: { select: { titulo: true, moneda: true } } },
       orderBy: { fechaLimite: 'asc' },
       take: 200,
     });
