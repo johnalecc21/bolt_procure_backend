@@ -37,6 +37,11 @@ export class CreateRequerimientoDto {
   @Min(0)
   montoEstimado: number;
 
+  /** Required when the company has exigeCentroCosto on. */
+  @IsString()
+  @IsOptional()
+  centroCostoId?: string;
+
   /** Defaults to the company's monedaBase. */
   @IsEnum(Moneda)
   @IsOptional()

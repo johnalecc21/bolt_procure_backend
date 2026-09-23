@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoHomologacion } from '@prisma/client';
+import { EstadoHomologacion, Prisma } from '@prisma/client';
+import { paginate } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { DOCUMENTOS_HOMOLOGACION_INICIALES } from '../homologacion/homologacion-documentos.const';
 import type { UpdatePerfilDto } from './dto/update-perfil.dto';
@@ -15,9 +16,8 @@ const PALETTE = [
 export class ProveedoresService {
   constructor(private prisma: PrismaService) {}
 
-  list(params?: { categoria?: string; minScore?: number; query?: string }) {
-    return this.prisma.proveedorProfile.findMany({
-      where: {
+  private whereDirectorio(params?: { categoria?: string; minScore?: number; query?: string }): Prisma.ProveedorProfileWhereInput {
+    return {
         // Only providers with an approved homologacion are visible/selectable here —
         // a provider stuck in zona gris or without homologacion has no business
         // being invited to bid, even though the invitation endpoint also enforces this.
@@ -35,12 +35,41 @@ export class ProveedoresService {
               ],
             }
           : {}),
-      },
+    };
+  }
+
+  list(params?: { categoria?: string; minScore?: number; query?: string }) {
+    return this.prisma.proveedorProfile.findMany({
+      where: this.whereDirectorio(params),
       orderBy: { score: 'desc' },
-      // The directory has no per-caller scope to bound it by (it's meant to
-      // be browsed/filtered, not paged) — growth guard-rail, not page size.
+      // The directory has no per-caller scope to bound it by — growth
+      // guard-rail for the non-paginated callers (shortlist, dashboard).
       take: 200,
     });
+  }
+
+  /** Server-side paginated directory for the client portal. */
+  async listPaginada(params: { page: number; limit: number; categoria?: string; minScore?: number; query?: string }) {
+    const where = this.whereDirectorio(params);
+    const [items, total] = await Promise.all([
+      this.prisma.proveedorProfile.findMany({
+        where,
+        orderBy: [{ score: 'desc' }, { nombre: 'asc' }],
+        skip: (params.page - 1) * params.limit,
+        take: params.limit,
+      }),
+      this.prisma.proveedorProfile.count({ where }),
+    ]);
+    return paginate(items, total, params.page, params.limit);
+  }
+
+  /** Every category used by an approved proveedor — the directory's filter options. */
+  async categorias(): Promise<string[]> {
+    const filas = await this.prisma.proveedorProfile.findMany({
+      where: { homologacion: { estado: EstadoHomologacion.APROBADO } },
+      select: { categorias: true },
+    });
+    return [...new Set(filas.flatMap((f) => f.categorias))].sort((a, b) => a.localeCompare(b, 'es'));
   }
 
   async findOne(id: string) {

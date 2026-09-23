@@ -71,6 +71,10 @@ adjudicacion/    confirmación, revisión legal, firma electrónica simulada
 contratos/       repositorio de contratos/POs
 seguimiento/     hitos post-PO
 evaluaciones/    evaluación de desempeño del proveedor por contrato
+estructura/      sedes / unidades de negocio, centros de costo y presupuestos anuales
+planes/          límites por plan (usuarios, requerimientos/mes, almacenamiento) y /empresa/uso
+email/           correos transaccionales (Resend) de cada notificación
+vitrina/         vitrina pública y contenido del proveedor
 disputas/        gestión + mediación de disputas
 invitaciones/    bandeja de invitaciones del proveedor
 pagos/           centro de pagos / pronto pago
@@ -86,6 +90,18 @@ interno/         casos de consultor, admin de clientes, benchmark de mercado
 - **Listas restrictivas**: al enviar se cruza la razón social y el representante legal contra OFAC/SDN y la lista consolidada del Consejo de Seguridad de la ONU. Si una lista no responde queda `NO_DISPONIBLE` y la homologación pasa a zona gris (nunca se asume "limpio"). Para proveedores colombianos se agregan Procuraduría, Contraloría y Policía como `PENDIENTE_MANUAL` (no tienen API pública); Compliance registra el resultado con `POST /homologacion/:proveedorId/verificaciones` y no puede aprobar mientras haya listas pendientes, caídas o con coincidencias sin resolver.
 - **Requisitos por empresa**: el Admin Cliente define en `PUT /homologacion/requisitos` qué categorías exige (validadas y vigentes) para poder invitar a un proveedor. Vacío = basta con homologación aprobada.
 - **Vitrina pública**: `GET /vitrina/:id` (sin login) muestra el perfil verificado de un proveedor homologado junto con el contenido que él mismo administra desde `/vitrina/mine`: presentación, contacto, video, galería de imágenes (hasta 20), brochures y catálogos en PDF (hasta 5 de cada uno) y catálogo de productos/servicios con foto y precio de referencia (hasta 60). Los archivos van al bucket privado `vitrina-proveedores` (el backend lo crea al arrancar si no existe; máx. 10 MB por archivo) y se sirven con URLs firmadas. El directorio de clientes también busca por la descripción y los productos del catálogo.
+
+## Estructura interna y presupuestos
+
+Cada empresa cliente puede definir **sedes / unidades de negocio** y **centros de costo** con **presupuesto anual** (`/estructura`). Los requerimientos se cargan a un centro de costo (obligatorio si la empresa activa `exigeCentroCosto`) y los contratos lo heredan. Si un requerimiento supera lo disponible (presupuesto − contratos del año − requerimientos en curso, en la misma moneda), igual va a aprobación pero como **excepción de presupuesto** y con el CFO en la cadena. `GET /estructura/ejecucion?anio=` da la ejecución por centro.
+
+## Auditoría
+
+La bitácora se exporta en CSV (`GET /audit-log/export?desde=&hasta=`, Admin/CFO) y cada empresa define cuántos meses se guarda (`/audit-log/retencion`, por defecto 120; un proceso diario borra lo más viejo).
+
+## Operación
+
+Respaldos, simulacro de restauración, alertas, SLA y límites por plan: ver [`docs/OPERACION.md`](docs/OPERACION.md).
 
 ## Moneda
 

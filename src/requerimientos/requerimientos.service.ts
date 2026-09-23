@@ -9,6 +9,9 @@ import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
 import { categoriasFaltantes, esElegible } from '../homologacion/requisitos.util';
 import { formatMonto } from '../common/utils/moneda.util';
 
+import { PlanesService } from '../planes/planes.service';
+import { EstructuraService } from '../estructura/estructura.service';
+import { paginate } from '../common/dto/pagination.dto';
 const BUCKET = 'requerimientos-documentos';
 
 // Manual transitions allowed via PATCH /:id/estado. EN_LICITACION is reached
@@ -32,6 +35,8 @@ export class RequerimientosService {
     private auditLog: AuditLogService,
     private notificaciones: NotificacionesService,
     private storage: StorageService,
+    private planes: PlanesService,
+    private estructura: EstructuraService,
   ) {}
 
   // Notifies whoever can act right now: for UNICA that's everyone in the
@@ -113,6 +118,43 @@ export class RequerimientosService {
     });
   }
 
+  /** Server-side paginated list for the Requerimientos screen (search, state, cost center). */
+  async listPaginada(
+    companyId: string,
+    userId: string,
+    role: Role,
+    params: { page: number; limit: number; q?: string; estado?: EstadoRequerimiento; centroCostoId?: string },
+  ) {
+    const q = params.q?.trim();
+    const numero = q?.match(/^(?:REQ-)?0*(\d+)$/i)?.[1];
+    const where: Prisma.RequerimientoWhereInput = {
+      companyId,
+      ...(role === Role.COMPRADOR ? { solicitanteId: userId } : {}),
+      ...(params.estado ? { estado: params.estado } : {}),
+      ...(params.centroCostoId ? { centroCostoId: params.centroCostoId } : {}),
+      ...(q
+        ? {
+            OR: [
+              { titulo: { contains: q, mode: 'insensitive' } },
+              { categoria: { contains: q, mode: 'insensitive' } },
+              ...(numero ? [{ numero: Number(numero) }] : []),
+            ],
+          }
+        : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.requerimiento.findMany({
+        where,
+        include: { solicitante: { select: { nombre: true } }, centroCosto: { select: { codigo: true, nombre: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip: (params.page - 1) * params.limit,
+        take: params.limit,
+      }),
+      this.prisma.requerimiento.count({ where }),
+    ]);
+    return paginate(items, total, params.page, params.limit);
+  }
+
   async findOne(companyId: string, id: string) {
     const req = await this.prisma.requerimiento.findFirst({
       where: { id, companyId },
@@ -140,6 +182,7 @@ export class RequerimientosService {
   }
 
   async create(companyId: string, solicitanteId: string, dto: CreateRequerimientoDto) {
+    await this.planes.verificarRequerimientoDelMes(companyId);
     const { elegibles, excluidos } = dto.proveedorIds?.length
       ? await this.filtrarElegibles(companyId, dto.proveedorIds)
       : { elegibles: [], excluidos: [] };
@@ -148,6 +191,16 @@ export class RequerimientosService {
       where: { id: companyId },
       select: { monedaBase: true },
     });
+    const moneda = dto.moneda ?? company.monedaBase;
+    // Over the cost center's remaining budget → it still goes to approval,
+    // but as a budget exception that finance (CFO) must sign off on.
+    const { centroCostoId, evaluacion: presupuesto } = await this.estructura.evaluarParaRequerimiento(
+      companyId,
+      dto.centroCostoId,
+      dto.montoEstimado,
+      moneda,
+    );
+    const excedePresupuesto = presupuesto?.excede ?? false;
 
     let rolesRequeridosCreados: Role[] = [];
     let tipoReglaCreado: TipoRegla = TipoRegla.UNICA;
@@ -162,7 +215,8 @@ export class RequerimientosService {
           descripcion: dto.descripcion,
           categoria: dto.categoria,
           montoEstimado: dto.montoEstimado,
-          moneda: dto.moneda ?? company.monedaBase,
+          moneda,
+          centroCostoId,
           fechaLimite: new Date(dto.fechaLimite),
           criteriosPeso: dto.criteriosPeso,
           especificaciones: dto.especificaciones as unknown as Prisma.InputJsonValue,
@@ -181,15 +235,19 @@ export class RequerimientosService {
       const regla = reglas.find(
         (r) => dto.montoEstimado >= r.montoMin && (r.montoMax == null || dto.montoEstimado <= r.montoMax),
       );
-      const rolesRequeridos = regla && regla.roles.length > 0
+      const rolesBase = regla && regla.roles.length > 0
         ? regla.roles
         : [Role.ADMIN_CLIENTE, Role.APROBADOR_CFO];
+      const rolesRequeridos =
+        excedePresupuesto && !rolesBase.includes(Role.APROBADOR_CFO)
+          ? [...rolesBase, Role.APROBADOR_CFO]
+          : rolesBase;
       rolesRequeridosCreados = rolesRequeridos;
       tipoReglaCreado = regla?.tipo ?? TipoRegla.UNICA;
       const aprobacion = await tx.aprobacion.create({
         data: {
           requerimientoId: requerimiento.id,
-          tipo: TipoAprobacion.SALIDA_LICITACION,
+          tipo: excedePresupuesto ? TipoAprobacion.EXCEPCION_PRESUPUESTO : TipoAprobacion.SALIDA_LICITACION,
           monto: dto.montoEstimado,
           urgente: false,
           rolesRequeridos,
@@ -225,7 +283,17 @@ export class RequerimientosService {
       requerimiento.moneda,
     );
 
-    return { ...requerimiento, excluidosPorHomologacion: excluidos };
+    if (excedePresupuesto && presupuesto) {
+      await this.auditLog.log({
+        companyId,
+        usuarioId: solicitanteId,
+        usuario: 'Control de presupuesto',
+        accion: 'Requerimiento excede el presupuesto del centro de costo',
+        detalle: `${formatRequerimientoCodigo(requerimiento.numero)} — ${presupuesto.centroCosto}: disponible ${formatMonto(presupuesto.disponible, presupuesto.moneda)}, solicitado ${formatMonto(dto.montoEstimado, moneda)}`,
+      });
+    }
+
+    return { ...requerimiento, excluidosPorHomologacion: excluidos, presupuesto };
   }
 
   async updateEstado(companyId: string, id: string, estado: EstadoRequerimiento, actorNombre: string) {
@@ -273,8 +341,9 @@ export class RequerimientosService {
   // Creates the document row up front (estado PENDIENTE) so the signed
   // upload URL can be scoped to its own id — matches the Homologación
   // pattern, which is the other per-parent-many-documents case in this app.
-  async crearUrlSubidaDocumento(companyId: string, id: string, filename: string) {
+  async crearUrlSubidaDocumento(companyId: string, id: string, filename: string, tamanoBytes?: number) {
     await this.ownedByCompany(companyId, id);
+    if (tamanoBytes) await this.planes.verificarAlmacenamiento(companyId, tamanoBytes);
     const doc = await this.prisma.documentoRequerimiento.create({
       data: { requerimientoId: id, nombre: filename },
     });
@@ -284,7 +353,14 @@ export class RequerimientosService {
     return { docId: doc.id, ...uploadUrl };
   }
 
-  async confirmarDocumento(companyId: string, id: string, docId: string, path: string, actorNombre: string) {
+  async confirmarDocumento(
+    companyId: string,
+    id: string,
+    docId: string,
+    path: string,
+    actorNombre: string,
+    tamanoBytes?: number,
+  ) {
     const doc = await this.prisma.documentoRequerimiento.findFirst({
       where: { id: docId, requerimientoId: id, requerimiento: { companyId } },
       include: { requerimiento: { select: { numero: true } } },
@@ -295,7 +371,7 @@ export class RequerimientosService {
     }
     const actualizado = await this.prisma.documentoRequerimiento.update({
       where: { id: docId },
-      data: { estado: EstadoDocumento.SUBIDO, storagePath: path },
+      data: { estado: EstadoDocumento.SUBIDO, storagePath: path, tamanoBytes: tamanoBytes ?? null },
     });
     await this.auditLog.log({
       companyId,

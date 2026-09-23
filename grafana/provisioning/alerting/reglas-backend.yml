@@ -1,0 +1,124 @@
+# Alertas del backend sobre los logs que pino envía a Loki (label app=bolt-procure-backend).
+# El punto de contacto (correo, Slack, etc.) se configura en Grafana → Alerting →
+# Contact points; ver docs/OPERACION.md.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: procurex-backend
+    folder: Procurex
+    interval: 1m
+    rules:
+      - uid: procurex-errores
+        title: Errores del backend (más de 10 en 5 min)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: sum(count_over_time({app="bolt-procure-backend"} | json | level >= 50 [5m])) or vector(0)
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{ evaluator: { type: gt, params: [10] } }]
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: { severidad: alta }
+        annotations:
+          summary: El backend está registrando errores por encima de lo normal.
+          description: Revisa GlitchTip y los logs en Grafana (Explore → Loki, level >= 50).
+
+      - uid: procurex-5xx
+        title: Respuestas 5xx (más de 5 en 5 min)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: sum(count_over_time({app="bolt-procure-backend"} | json | res_statusCode >= 500 [5m])) or vector(0)
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{ evaluator: { type: gt, params: [5] } }]
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: { severidad: alta }
+        annotations:
+          summary: Usuarios reciben errores 5xx.
+
+      - uid: procurex-latencia
+        title: Latencia p95 mayor a 2 s
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: quantile_over_time(0.95, {app="bolt-procure-backend"} | json | responseTime > 0 | unwrap responseTime [10m])
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: max }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{ evaluator: { type: gt, params: [2000] } }]
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels: { severidad: media }
+        annotations:
+          summary: Las respuestas están lentas (p95 > 2 s).
+
+      - uid: procurex-sin-logs
+        title: El backend dejó de reportar (10 min sin logs)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: sum(count_over_time({app="bolt-procure-backend"}[10m])) or vector(0)
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{ evaluator: { type: lt, params: [1] } }]
+        for: 0s
+        noDataState: Alerting
+        execErrState: Error
+        labels: { severidad: critica }
+        annotations:
+          summary: No llegan logs del backend — puede estar caído.
+          description: Verifica /health y el proveedor de hosting.

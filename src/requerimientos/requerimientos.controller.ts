@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { PortalOnly } from '../common/decorators/portal.decorator';
@@ -14,6 +14,7 @@ import { UploadUrlDto } from './dto/upload-url.dto';
 import { ConfirmarDocumentoDto } from './dto/confirmar-documento.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
+import { ListarRequerimientosDto } from './dto/listar-requerimientos.dto';
 @ApiTags('requerimientos')
 @PortalOnly('CLIENTE')
 @Controller('requerimientos')
@@ -23,6 +24,17 @@ export class RequerimientosController {
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.service.list(user.companyId, user.sub, user.role);
+  }
+
+  @Get('pagina')
+  listPaginada(@CurrentUser() user: AuthenticatedUser, @Query() dto: ListarRequerimientosDto) {
+    return this.service.listPaginada(user.companyId, user.sub, user.role, {
+      page: dto.page ?? 1,
+      limit: dto.limit ?? 20,
+      q: dto.q,
+      estado: dto.estado,
+      centroCostoId: dto.centroCostoId,
+    });
   }
 
   @Get(':id')
@@ -81,7 +93,7 @@ export class RequerimientosController {
     @Param('id') id: string,
     @Body() dto: UploadUrlDto,
   ) {
-    return this.service.crearUrlSubidaDocumento(user.companyId, id, dto.filename);
+    return this.service.crearUrlSubidaDocumento(user.companyId, id, dto.filename, dto.tamanoBytes);
   }
 
   @Post(':id/documentos/:docId/confirmar')
@@ -91,7 +103,7 @@ export class RequerimientosController {
     @Param('docId') docId: string,
     @Body() dto: ConfirmarDocumentoDto,
   ) {
-    return this.service.confirmarDocumento(user.companyId, id, docId, dto.path, user.email);
+    return this.service.confirmarDocumento(user.companyId, id, docId, dto.path, user.email, dto.tamanoBytes);
   }
 
   @Get(':id/documentos/:docId/url')

@@ -1,0 +1,37 @@
+name: Respaldo diario de base de datos
+
+# Respaldo lógico cifrado, guardado como artefacto de GitHub (privado al repo)
+# durante 30 días. Complementa — no reemplaza — los respaldos de Supabase.
+#
+# Secretos necesarios (Settings → Secrets and variables → Actions):
+#   BACKUP_DATABASE_URL  conexión directa a Supabase (puerto 5432), idealmente
+#                        con un usuario de solo lectura
+#   BACKUP_PASSPHRASE    frase para cifrar el archivo (guárdala fuera de GitHub)
+
+on:
+  schedule:
+    - cron: '30 7 * * *' # 02:30 hora Colombia
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cliente de PostgreSQL
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+      - name: Respaldo cifrado
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: ./scripts/backup-db.sh backups
+      - uses: actions/upload-artifact@v4
+        with:
+          name: respaldo-${{ github.run_id }}
+          path: backups/*.gpg
+          retention-days: 30
+          if-no-files-found: error

@@ -150,6 +150,7 @@ export class AdjudicacionService {
           categoria: requerimiento.categoria,
           monto: adjudicacion.precioFinal,
           moneda: requerimiento.moneda,
+          centroCostoId: requerimiento.centroCostoId,
           vigenciaInicio: hoy,
           vigenciaFin,
           condicionesPagoDias: adjudicacion.condicionesPagoDias,

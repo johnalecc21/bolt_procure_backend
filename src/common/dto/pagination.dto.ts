@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, Min, MaxLength } from 'class-validator';
 
 export class PaginationQueryDto {
   @IsOptional()
@@ -26,4 +26,12 @@ export interface Paginated<T> {
 
 export function paginate<T>(items: T[], total: number, page: number, limit: number): Paginated<T> {
   return { items, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) };
+}
+
+/** Page + free-text search, shared by the paginated list endpoints. */
+export class BusquedaPaginadaDto extends PaginationQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
 }

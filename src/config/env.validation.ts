@@ -25,4 +25,10 @@ export const envValidationSchema = Joi.object({
   LOKI_HOST: Joi.string().uri().optional(),
   LOKI_USER: Joi.string().allow('').optional(),
   LOKI_PASSWORD: Joi.string().allow('').optional(),
+
+  // Transactional email (Resend). Without the key, emails are only logged.
+  RESEND_API_KEY: Joi.string().allow('').optional(),
+  EMAIL_FROM: Joi.string().optional(),
+  // Public URL of the frontend, used for links inside emails. Defaults to CORS_ORIGIN.
+  APP_URL: Joi.string().uri().optional(),
 }).unknown(true);

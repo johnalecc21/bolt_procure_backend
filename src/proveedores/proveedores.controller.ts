@@ -7,6 +7,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ProveedoresService } from './proveedores.service';
 import { CreateExternoDto } from './dto/create-externo.dto';
 import { UpdatePerfilDto } from './dto/update-perfil.dto';
+import { ListarProveedoresDto } from './dto/listar-proveedores.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('proveedores')
@@ -26,6 +27,24 @@ export class ProveedoresController {
       minScore: minScore ? Number(minScore) : undefined,
       query,
     });
+  }
+
+  @PortalOnly('CLIENTE', 'INTERNO')
+  @Get('pagina')
+  listPaginada(@Query() dto: ListarProveedoresDto) {
+    return this.service.listPaginada({
+      page: dto.page ?? 1,
+      limit: dto.limit ?? 24,
+      categoria: dto.categoria,
+      minScore: dto.minScore,
+      query: dto.q,
+    });
+  }
+
+  @PortalOnly('CLIENTE', 'INTERNO')
+  @Get('categorias')
+  categorias() {
+    return this.service.categorias();
   }
 
   @PortalOnly('PROVEEDOR')

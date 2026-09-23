@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Portal, TipoContrato } from '@prisma/client';
+import { Portal, TipoContrato, EstadoContrato, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
@@ -8,6 +8,8 @@ import { formatContratoCodigo } from '../common/utils/codigo.util';
 import { EmitirPoDto } from './dto/emitir-po.dto';
 import { formatMonto } from '../common/utils/moneda.util';
 
+import { PlanesService } from '../planes/planes.service';
+import { paginate } from '../common/dto/pagination.dto';
 const BUCKET = 'contratos-documentos';
 
 @Injectable()
@@ -17,7 +19,46 @@ export class ContratosService {
     private auditLog: AuditLogService,
     private proveedores: ProveedoresService,
     private storage: StorageService,
+    private planes: PlanesService,
   ) {}
+
+  /** Server-side paginated list for the Contratos screen. */
+  async listPaginada(
+    companyId: string,
+    params: { page: number; limit: number; q?: string; categoria?: string; estado?: EstadoContrato },
+  ) {
+    const q = params.q?.trim();
+    const numero = q?.match(/^(?:CTO-|PO-|ADD-)?0*(\d+)$/i)?.[1];
+    const where: Prisma.ContratoWhereInput = {
+      companyId,
+      ...(params.categoria && params.categoria !== 'Todas' ? { categoria: params.categoria } : {}),
+      ...(params.estado ? { estado: params.estado } : {}),
+      ...(q
+        ? {
+            OR: [
+              { proveedorNombre: { contains: q, mode: 'insensitive' } },
+              { categoria: { contains: q, mode: 'insensitive' } },
+              ...(numero ? [{ numero: Number(numero) }] : []),
+            ],
+          }
+        : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.contrato.findMany({
+        where,
+        orderBy: { vigenciaFin: 'asc' },
+        skip: (params.page - 1) * params.limit,
+        take: params.limit,
+        include: {
+          hitos: { orderBy: { orden: 'asc' } },
+          hijas: { select: { id: true, monto: true, estado: true } },
+          centroCosto: { select: { codigo: true, nombre: true } },
+        },
+      }),
+      this.prisma.contrato.count({ where }),
+    ]);
+    return paginate(items, total, params.page, params.limit);
+  }
 
   list(companyId: string, params?: { categoria?: string; query?: string }) {
     return this.prisma.contrato.findMany({
@@ -82,6 +123,7 @@ export class ContratosService {
         categoria: padre.categoria,
         monto: dto.monto,
         moneda: padre.moneda,
+        centroCostoId: padre.centroCostoId,
         vigenciaInicio: new Date(dto.vigenciaInicio),
         vigenciaFin: new Date(dto.vigenciaFin),
         contratoPadreId: padre.id,
@@ -129,15 +171,26 @@ export class ContratosService {
 
   // Only the company that owns the contrato can attach their own PO/contract
   // file — it replaces the Procurex-generated template as the download.
-  async crearUrlSubida(companyId: string, id: string, filename: string) {
+  async crearUrlSubida(companyId: string, id: string, filename: string, tamanoBytes?: number) {
     const contrato = await this.prisma.contrato.findFirst({ where: { id, companyId } });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
+    // Replacing the current file frees its space, so only the difference counts.
+    if (tamanoBytes) {
+      await this.planes.verificarAlmacenamiento(companyId, Math.max(0, tamanoBytes - (contrato.archivoTamanoBytes ?? 0)));
+    }
 
     const path = `${companyId}/${id}/${this.storage.safeFilename(filename)}`;
     return this.storage.createUploadUrl(BUCKET, path);
   }
 
-  async adjuntarArchivo(companyId: string, id: string, path: string, nombre: string, actorNombre: string) {
+  async adjuntarArchivo(
+    companyId: string,
+    id: string,
+    path: string,
+    nombre: string,
+    actorNombre: string,
+    tamanoBytes?: number,
+  ) {
     const contrato = await this.prisma.contrato.findFirst({ where: { id, companyId } });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
     if (!path.startsWith(`${companyId}/${id}/`)) {
@@ -145,7 +198,7 @@ export class ContratosService {
     }
     const actualizado = await this.prisma.contrato.update({
       where: { id },
-      data: { archivoStoragePath: path, archivoNombre: nombre },
+      data: { archivoStoragePath: path, archivoNombre: nombre, archivoTamanoBytes: tamanoBytes ?? null },
     });
     await this.auditLog.log({
       companyId,

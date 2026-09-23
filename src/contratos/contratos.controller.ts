@@ -8,6 +8,7 @@ import { AdjuntarArchivoDto } from './dto/adjuntar-archivo.dto';
 import { EmitirPoDto } from './dto/emitir-po.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
+import { ListarContratosDto } from './dto/listar-contratos.dto';
 @ApiTags('contratos')
 @Controller('contratos')
 export class ContratosController {
@@ -37,6 +38,18 @@ export class ContratosController {
   }
 
   @PortalOnly('CLIENTE')
+  @Get('pagina')
+  listPaginada(@CurrentUser() user: AuthenticatedUser, @Query() dto: ListarContratosDto) {
+    return this.service.listPaginada(user.companyId, {
+      page: dto.page ?? 1,
+      limit: dto.limit ?? 20,
+      q: dto.q,
+      categoria: dto.categoria,
+      estado: dto.estado,
+    });
+  }
+
+  @PortalOnly('CLIENTE')
   @Get(':id')
   findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.service.findOne(user.companyId, id);
@@ -45,13 +58,13 @@ export class ContratosController {
   @PortalOnly('CLIENTE')
   @Post(':id/upload-url')
   crearUrlSubida(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: UploadUrlDto) {
-    return this.service.crearUrlSubida(user.companyId, id, dto.filename);
+    return this.service.crearUrlSubida(user.companyId, id, dto.filename, dto.tamanoBytes);
   }
 
   @PortalOnly('CLIENTE')
   @Post(':id/adjuntar')
   adjuntar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: AdjuntarArchivoDto) {
-    return this.service.adjuntarArchivo(user.companyId, id, dto.path, dto.nombre, user.email);
+    return this.service.adjuntarArchivo(user.companyId, id, dto.path, dto.nombre, user.email, dto.tamanoBytes);
   }
 
   @PortalOnly('CLIENTE')

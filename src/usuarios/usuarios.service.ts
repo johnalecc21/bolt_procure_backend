@@ -5,12 +5,14 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import { InviteUserDto } from './dto/invite-user.dto';
 
+import { PlanesService } from '../planes/planes.service';
 @Injectable()
 export class UsuariosService {
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
     private supabase: SupabaseService,
+    private planes: PlanesService,
   ) {}
 
   async listByCompany(companyId: string) {
@@ -37,6 +39,10 @@ export class UsuariosService {
   async invite(companyId: string, dto: InviteUserDto, actorNombre: string) {
     const email = dto.email.toLowerCase();
     const existing = await this.prisma.user.findUnique({ where: { email } });
+    const yaActivo = existing
+      ? await this.prisma.companyMembership.findFirst({ where: { userId: existing.id, companyId, activo: true } })
+      : null;
+    if (!yaActivo) await this.planes.verificarUsuarios(companyId);
     const iniciales = email.split('@')[0].slice(0, 2).toUpperCase();
 
     let user = existing;
@@ -113,6 +119,7 @@ export class UsuariosService {
     }
 
     const nextActive = !membership.activo;
+    if (nextActive) await this.planes.verificarUsuarios(companyId);
     await this.prisma.companyMembership.update({
       where: { userId_companyId: { userId, companyId } },
       data: { activo: nextActive },

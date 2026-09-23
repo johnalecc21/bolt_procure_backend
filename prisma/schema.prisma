@@ -219,16 +219,23 @@ model Company {
   // be invited by this company, on top of an APROBADO homologación. Empty
   // (the default) keeps the original rule: APROBADO is enough.
   categoriasHomologacionRequeridas CategoriaDocumento[] @default([])
+  // When true, every new requerimiento must be charged to a centro de costo.
+  exigeCentroCosto                 Boolean              @default(false)
+  // Audit rows older than this are purged by the daily retention job.
+  // Default 10 years — Colombian commercial books (Código de Comercio art. 60).
+  retencionAuditoriaMeses          Int                  @default(120)
 
-  memberships    CompanyMembership[]
-  requerimientos Requerimiento[]
-  contratos      Contrato[]
-  disputas       Disputa[]
-  matrizReglas   MatrizAprobacionRegla[]
-  casosConsultor CasoConsultor[]
-  invitaciones   Invitacion[]
-  auditLogs      AuditLogEntry[]
-  evaluaciones   EvaluacionDesempeno[]
+  memberships     CompanyMembership[]
+  requerimientos  Requerimiento[]
+  contratos       Contrato[]
+  disputas        Disputa[]
+  matrizReglas    MatrizAprobacionRegla[]
+  casosConsultor  CasoConsultor[]
+  invitaciones    Invitacion[]
+  auditLogs       AuditLogEntry[]
+  evaluaciones    EvaluacionDesempeno[]
+  unidadesNegocio UnidadNegocio[]
+  centrosCosto    CentroCosto[]
 
   @@map("companies")
 }
@@ -249,6 +256,8 @@ model User {
   /// Null until the user explicitly accepts the Términos y Condiciones / Aviso de
   /// Privacidad — gates a one-time acceptance modal on first entry to a portal.
   terminosAceptadosEn DateTime?
+  // Whether in-app notifications are also sent by email.
+  recibirCorreos      Boolean   @default(true)
 
   memberships               CompanyMembership[]
   proveedorProfile          ProveedorProfile?
@@ -297,6 +306,7 @@ model Requerimiento {
   estado               EstadoRequerimiento @default(BORRADOR)
   montoEstimado        Int
   moneda               Moneda              @default(USD)
+  centroCostoId        String?
   fechaLimite          DateTime
   progreso             Int                 @default(0)
   proveedoresInvitados Int                 @default(0)
@@ -307,8 +317,9 @@ model Requerimiento {
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
-  company     Company @relation(fields: [companyId], references: [id])
-  solicitante User    @relation("Solicitante", fields: [solicitanteId], references: [id])
+  company     Company      @relation(fields: [companyId], references: [id])
+  solicitante User         @relation("Solicitante", fields: [solicitanteId], references: [id])
+  centroCosto CentroCosto? @relation(fields: [centroCostoId], references: [id])
 
   ofertas        Oferta[]
   adjudicacion   Adjudicacion?
@@ -321,6 +332,7 @@ model Requerimiento {
   preguntas      Pregunta[]
 
   @@index([companyId])
+  @@index([centroCostoId])
   @@index([solicitanteId])
   @@map("requerimientos")
 }
@@ -345,6 +357,8 @@ model DocumentoRequerimiento {
   createdAt       DateTime        @default(now())
   /// Path within the `requerimientos-documentos` Supabase Storage bucket, set once the file is actually uploaded.
   storagePath     String?
+  /// Size reported by the uploader — counts toward the company's storage quota.
+  tamanoBytes     Int?
 
   requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
 
@@ -555,6 +569,8 @@ model Contrato {
   // Copied from the requerimiento at signing time (or from the padre for a
   // PO under a Contrato Marco) so every amount downstream has its currency.
   moneda                Moneda         @default(USD)
+  // Copied from the requerimiento (or the padre) — what budget execution reads.
+  centroCostoId         String?
   vigenciaInicio        DateTime
   vigenciaFin           DateTime
   estado                EstadoContrato @default(ACTIVO)
@@ -564,6 +580,7 @@ model Contrato {
   // downloads this contract gets the Procurex-generated template instead.
   archivoNombre         String?
   archivoStoragePath    String?
+  archivoTamanoBytes    Int?
   // Set on a PO issued under a Contrato Marco (tipo CONTRATO) — links the
   // child PO back to the master agreement it was issued under.
   contratoPadreId       String?
@@ -585,6 +602,7 @@ model Contrato {
   padre         Contrato?             @relation("ContratoPadreHijas", fields: [contratoPadreId], references: [id])
   hijas         Contrato[]            @relation("ContratoPadreHijas")
   evaluaciones  EvaluacionDesempeno[]
+  centroCosto   CentroCosto?          @relation(fields: [centroCostoId], references: [id])
 
   @@index([companyId])
   @@index([estado])
@@ -910,4 +928,64 @@ model ItemCatalogo {
 
   @@index([proveedorId])
   @@map("items_catalogo")
+}
+
+enum TipoUnidadNegocio {
+  SEDE
+  UNIDAD_NEGOCIO
+}
+
+/// A site (sede) or business unit inside a client company.
+model UnidadNegocio {
+  id        String            @id @default(cuid())
+  companyId String
+  nombre    String
+  codigo    String
+  tipo      TipoUnidadNegocio @default(SEDE)
+  ciudad    String?
+  activa    Boolean           @default(true)
+  createdAt DateTime          @default(now())
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  centrosCosto CentroCosto[]
+
+  @@unique([companyId, codigo])
+  @@map("unidades_negocio")
+}
+
+/// Cost center requerimientos and contratos are charged to.
+model CentroCosto {
+  id              String   @id @default(cuid())
+  companyId       String
+  unidadNegocioId String?
+  codigo          String
+  nombre          String
+  responsable     String?
+  activo          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  company        Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  unidadNegocio  UnidadNegocio?           @relation(fields: [unidadNegocioId], references: [id], onDelete: SetNull)
+  presupuestos   PresupuestoCentroCosto[]
+  requerimientos Requerimiento[]
+  contratos      Contrato[]
+
+  @@unique([companyId, codigo])
+  @@index([unidadNegocioId])
+  @@map("centros_costo")
+}
+
+/// Annual budget of a cost center, in one currency.
+model PresupuestoCentroCosto {
+  id            String   @id @default(cuid())
+  centroCostoId String
+  anio          Int
+  monto         Int
+  moneda        Moneda
+  updatedAt     DateTime @updatedAt
+
+  centroCosto CentroCosto @relation(fields: [centroCostoId], references: [id], onDelete: Cascade)
+
+  @@unique([centroCostoId, anio])
+  @@map("presupuestos_centro_costo")
 }
