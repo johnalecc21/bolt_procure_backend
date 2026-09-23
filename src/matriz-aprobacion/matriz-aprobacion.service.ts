@@ -2,6 +2,8 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ReglaDto } from './dto/upsert-reglas.dto';
+import { formatMonto } from '../common/utils/moneda.util';
+import type { UpdateConfigDto } from './dto/update-config.dto';
 
 @Injectable()
 export class MatrizAprobacionService {
@@ -61,17 +63,25 @@ export class MatrizAprobacionService {
   async getConfig(companyId: string) {
     return this.prisma.company.findUniqueOrThrow({
       where: { id: companyId },
-      select: { umbralContratoMarco: true },
+      select: { umbralContratoMarco: true, monedaBase: true, pais: true },
     });
   }
 
-  async updateConfig(companyId: string, umbralContratoMarco: number, actorNombre: string) {
-    await this.prisma.company.update({ where: { id: companyId }, data: { umbralContratoMarco } });
+  async updateConfig(companyId: string, dto: UpdateConfigDto, actorNombre: string) {
+    const { umbralContratoMarco } = dto;
+    const company = await this.prisma.company.update({
+      where: { id: companyId },
+      data: {
+        umbralContratoMarco,
+        ...(dto.monedaBase ? { monedaBase: dto.monedaBase } : {}),
+        ...(dto.pais ? { pais: dto.pais.toUpperCase() } : {}),
+      },
+    });
     await this.auditLog.log({
       companyId,
       usuario: actorNombre,
       accion: 'Umbral de Contrato Marco actualizado',
-      detalle: `Nuevo umbral: $${umbralContratoMarco.toLocaleString()}`,
+      detalle: `Nuevo umbral: ${formatMonto(umbralContratoMarco, company.monedaBase)} · país ${company.pais}`,
     });
     return this.getConfig(companyId);
   }

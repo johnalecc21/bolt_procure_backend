@@ -34,6 +34,6 @@ export class MatrizAprobacionController {
 
   @Put('config')
   updateConfig(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateConfigDto) {
-    return this.service.updateConfig(user.companyId, dto.umbralContratoMarco, user.email);
+    return this.service.updateConfig(user.companyId, dto, user.email);
   }
 }

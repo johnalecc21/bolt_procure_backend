@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Moneda } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
@@ -8,18 +9,27 @@ const MESES_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep',
 export class AnaliticaService {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Money aggregates only include amounts in the company's monedaBase —
+   * summing COP and USD together would be meaningless, and there's no FX
+   * source to convert with. Cycle time isn't monetary, so it covers all.
+   */
   async resumen(companyId: string) {
+    const { monedaBase: moneda } = await this.prisma.company.findUniqueOrThrow({
+      where: { id: companyId },
+      select: { monedaBase: true },
+    });
     const [ahorroMensual, tiempoCicloCategoria, concentracionGasto, topProveedores] = await Promise.all([
-      this.ahorroMensual(companyId),
+      this.ahorroMensual(companyId, moneda),
       this.tiempoCicloCategoria(companyId),
-      this.concentracionGasto(companyId),
-      this.topProveedores(companyId),
+      this.concentracionGasto(companyId, moneda),
+      this.topProveedores(companyId, moneda),
     ]);
-    return { ahorroMensual, tiempoCicloCategoria, concentracionGasto, topProveedores };
+    return { moneda, ahorroMensual, tiempoCicloCategoria, concentracionGasto, topProveedores };
   }
 
   /** Real savings (montoEstimado - precioFinal) per signed adjudicación, summed over the last 6 calendar months. */
-  private async ahorroMensual(companyId: string) {
+  private async ahorroMensual(companyId: string, moneda: Moneda) {
     const ahora = new Date();
     const meses = Array.from({ length: 6 }, (_, i) => {
       const offset = 5 - i;
@@ -29,7 +39,7 @@ export class AnaliticaService {
     });
 
     const adjudicaciones = await this.prisma.adjudicacion.findMany({
-      where: { firmado: true, requerimiento: { companyId }, createdAt: { gte: meses[0].start } },
+      where: { firmado: true, requerimiento: { companyId, moneda }, createdAt: { gte: meses[0].start } },
       select: { precioFinal: true, createdAt: true, requerimiento: { select: { montoEstimado: true } } },
     });
 
@@ -63,10 +73,10 @@ export class AnaliticaService {
   }
 
   /** Real spend concentration by category, from signed contracts. */
-  private async concentracionGasto(companyId: string) {
+  private async concentracionGasto(companyId: string, moneda: Moneda) {
     const grupos = await this.prisma.contrato.groupBy({
       by: ['categoria'],
-      where: { companyId },
+      where: { companyId, moneda },
       _sum: { monto: true },
     });
     const total = grupos.reduce((sum, g) => sum + (g._sum.monto ?? 0), 0);
@@ -79,10 +89,10 @@ export class AnaliticaService {
       .sort((a, b) => b.monto - a.monto);
   }
 
-  private async topProveedores(companyId: string) {
+  private async topProveedores(companyId: string, moneda: Moneda) {
     const grupos = await this.prisma.contrato.groupBy({
       by: ['proveedorNombre'],
-      where: { companyId },
+      where: { companyId, moneda },
       _sum: { monto: true },
       orderBy: { _sum: { monto: 'desc' } },
       take: 5,

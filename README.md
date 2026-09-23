@@ -65,11 +65,12 @@ requerimientos/  ciclo de vida del requerimiento
 aprobaciones/    bandeja de aprobaciones
 matriz-aprobacion/  reglas de aprobación por monto
 proveedores/     directorio de proveedores
-homologacion/    formulario + cola de revisión (compliance)
+homologacion/    formulario + cola de revisión (compliance), listas restrictivas, requisitos por empresa
 ofertas/         carga de oferta estructurada / comparativo
 adjudicacion/    confirmación, revisión legal, firma electrónica simulada
 contratos/       repositorio de contratos/POs
 seguimiento/     hitos post-PO
+evaluaciones/    evaluación de desempeño del proveedor por contrato
 disputas/        gestión + mediación de disputas
 invitaciones/    bandeja de invitaciones del proveedor
 pagos/           centro de pagos / pronto pago
@@ -78,6 +79,17 @@ audit-log/       registro de auditoría transversal
 subasta/         WebSocket gateway para negociación/subasta en vivo
 interno/         casos de consultor, admin de clientes, benchmark de mercado
 ```
+
+## Homologación
+
+- Cada proveedor carga sus documentos **una sola vez** y sirven para todos los clientes. Los 4 base (legal, financiero, certificaciones, referencias) son obligatorios para enviar; HSE, sostenibilidad, centrales de riesgo y SARLAFT/LAFT son opcionales (suman puntaje).
+- **Listas restrictivas**: al enviar se cruza la razón social y el representante legal contra OFAC/SDN y la lista consolidada del Consejo de Seguridad de la ONU. Si una lista no responde queda `NO_DISPONIBLE` y la homologación pasa a zona gris (nunca se asume "limpio"). Para proveedores colombianos se agregan Procuraduría, Contraloría y Policía como `PENDIENTE_MANUAL` (no tienen API pública); Compliance registra el resultado con `POST /homologacion/:proveedorId/verificaciones` y no puede aprobar mientras haya pendientes o coincidencias sin resolver.
+- **Requisitos por empresa**: el Admin Cliente define en `PUT /homologacion/requisitos` qué categorías exige (validadas y vigentes) para poder invitar a un proveedor. Vacío = basta con homologación aprobada.
+- **Vitrina pública**: `GET /proveedores/vitrina/:id` (sin login) muestra el perfil verificado de un proveedor homologado.
+
+## Moneda
+
+Cada empresa tiene `pais` y `monedaBase` (COP, USD, MXN, PEN, CLP, BRL). Los requerimientos toman esa moneda (o una explícita) y la heredan contratos, POs y pagos. Los montos son enteros en unidades completas. La analítica solo agrega montos en la moneda base (no hay fuente de tasas de cambio).
 
 ## RBAC
 

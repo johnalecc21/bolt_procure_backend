@@ -6,6 +6,7 @@ import { ProveedoresService } from '../proveedores/proveedores.service';
 import { StorageService } from '../storage/storage.service';
 import { formatContratoCodigo } from '../common/utils/codigo.util';
 import { EmitirPoDto } from './dto/emitir-po.dto';
+import { formatMonto } from '../common/utils/moneda.util';
 
 const BUCKET = 'contratos-documentos';
 
@@ -80,6 +81,7 @@ export class ContratosService {
         proveedorNombre: padre.proveedorNombre,
         categoria: padre.categoria,
         monto: dto.monto,
+        moneda: padre.moneda,
         vigenciaInicio: new Date(dto.vigenciaInicio),
         vigenciaFin: new Date(dto.vigenciaFin),
         contratoPadreId: padre.id,
@@ -89,7 +91,7 @@ export class ContratosService {
       companyId,
       usuario: actorNombre,
       accion: 'PO emitida bajo Contrato Marco',
-      detalle: `${formatContratoCodigo(po.tipo, po.numero)} bajo ${formatContratoCodigo(padre.tipo, padre.numero)} — $${dto.monto.toLocaleString()}`,
+      detalle: `${formatContratoCodigo(po.tipo, po.numero)} bajo ${formatContratoCodigo(padre.tipo, padre.numero)} — ${formatMonto(dto.monto, padre.moneda)}`,
     });
     return po;
   }

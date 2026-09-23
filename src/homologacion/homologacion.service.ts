@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoDocumento, EstadoHomologacion, Role } from '@prisma/client';
+import { CategoriaDocumento, EstadoDocumento, EstadoHomologacion, ResultadoLista, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
@@ -29,7 +29,7 @@ export class HomologacionService {
     const proveedorId = await this.proveedores.findIdForUser(userId);
     const homologacion = await this.prisma.homologacion.findUnique({
       where: { proveedorId },
-      include: { documentos: true },
+      include: { documentos: { orderBy: { obligatorio: 'desc' } }, verificaciones: { orderBy: { lista: 'asc' } } },
     });
     if (!homologacion) throw new NotFoundException('Aún no has iniciado tu homologación.');
     return homologacion;
@@ -97,7 +97,7 @@ export class HomologacionService {
     const proveedorId = await this.proveedores.findIdForUser(userId);
     const homologacion = await this.prisma.homologacion.findUnique({
       where: { proveedorId },
-      include: { documentos: true, proveedor: true },
+      include: { documentos: true, proveedor: { include: { user: { select: { nombre: true } } } } },
     });
     if (!homologacion) throw new NotFoundException('Aún no has iniciado tu homologación.');
     if (homologacion.estado === EstadoHomologacion.EN_REVISION) {
@@ -106,19 +106,38 @@ export class HomologacionService {
     if (homologacion.estado === EstadoHomologacion.ZONA_GRIS) {
       throw new ConflictException('Tu homologación está en revisión manual por nuestro equipo de compliance.');
     }
+    const faltantes = homologacion.documentos.filter((d) => d.obligatorio && !d.storagePath);
+    if (faltantes.length > 0) {
+      throw new BadRequestException(
+        `Faltan documentos obligatorios: ${faltantes.map((d) => d.nombre).join(', ')}.`,
+      );
+    }
     const estadoPrevio = homologacion.estado;
 
-    const { score, alertas, nitDetectado } = await this.scoring.evaluar(
-      homologacion.documentos,
-      homologacion.proveedor.nombre,
-    );
+    const { score, alertas, nitDetectado, verificaciones } = await this.scoring.evaluar(homologacion.documentos, {
+      proveedorNombre: homologacion.proveedor.nombre,
+      representanteNombre: homologacion.proveedor.user?.nombre,
+      ubicacion: homologacion.proveedor.ubicacion,
+    });
     const estado = alertas.length > 0 ? EstadoHomologacion.ZONA_GRIS : EstadoHomologacion.EN_REVISION;
 
-    const actualizado = await this.prisma.homologacion.update({
-      where: { proveedorId },
-      data: { estado, score, alertas, nitDetectado, fechaSolicitud: new Date() },
-      include: { documentos: true },
-    });
+    // Each envío is a fresh screening — the previous round's list results
+    // (including manual checks) no longer describe what's being submitted.
+    const [, actualizado] = await this.prisma.$transaction([
+      this.prisma.verificacionLista.deleteMany({ where: { homologacionId: homologacion.id } }),
+      this.prisma.homologacion.update({
+        where: { proveedorId },
+        data: {
+          estado,
+          score,
+          alertas,
+          nitDetectado,
+          fechaSolicitud: new Date(),
+          verificaciones: { create: verificaciones },
+        },
+        include: { documentos: true, verificaciones: { orderBy: { lista: 'asc' } } },
+      }),
+    ]);
 
     await this.auditLog.log({
       usuarioId: userId,
@@ -138,8 +157,66 @@ export class HomologacionService {
   cola() {
     return this.prisma.homologacion.findMany({
       where: { estado: { in: [EstadoHomologacion.EN_REVISION, EstadoHomologacion.ZONA_GRIS] } },
-      include: { documentos: true, proveedor: true },
+      include: { documentos: true, proveedor: true, verificaciones: { orderBy: { lista: 'asc' } } },
     });
+  }
+
+  /**
+   * Compliance records the outcome of a list check — either a manual one
+   * (Procuraduría, Contraloría, Policía) or a reviewed automated hit that
+   * turned out to be a homonym (COINCIDENCIA → SIN_COINCIDENCIA with a note).
+   */
+  async registrarVerificacion(
+    proveedorId: string,
+    lista: string,
+    resultado: ResultadoLista,
+    detalle: string | undefined,
+    actorNombre: string,
+  ) {
+    const homologacion = await this.prisma.homologacion.findUnique({
+      where: { proveedorId },
+      include: { proveedor: true },
+    });
+    if (!homologacion) throw new NotFoundException('Homologación no encontrada.');
+    if (resultado === ResultadoLista.PENDIENTE_MANUAL) {
+      throw new BadRequestException('Registra el resultado de la consulta, no un pendiente.');
+    }
+
+    const verificacion = await this.prisma.verificacionLista.upsert({
+      where: { homologacionId_lista: { homologacionId: homologacion.id, lista } },
+      create: { homologacionId: homologacion.id, lista, resultado, detalle, verificadoPor: actorNombre },
+      update: { resultado, detalle, verificadoPor: actorNombre },
+    });
+    await this.auditLog.log({
+      usuario: actorNombre,
+      accion: 'Verificación en lista restrictiva registrada',
+      detalle: `${homologacion.proveedor.nombre} — ${lista}: ${resultado}`,
+      motivo: detalle,
+    });
+    return verificacion;
+  }
+
+  async getRequisitos(companyId: string) {
+    const company = await this.prisma.company.findUniqueOrThrow({
+      where: { id: companyId },
+      select: { categoriasHomologacionRequeridas: true },
+    });
+    return { categorias: company.categoriasHomologacionRequeridas };
+  }
+
+  async updateRequisitos(companyId: string, categorias: CategoriaDocumento[], actorNombre: string) {
+    const unicas = [...new Set(categorias)];
+    await this.prisma.company.update({
+      where: { id: companyId },
+      data: { categoriasHomologacionRequeridas: unicas },
+    });
+    await this.auditLog.log({
+      companyId,
+      usuario: actorNombre,
+      accion: 'Requisitos de homologación actualizados',
+      detalle: unicas.length ? unicas.join(', ') : 'Solo homologación aprobada',
+    });
+    return { categorias: unicas };
   }
 
   async resolver(
@@ -151,9 +228,19 @@ export class HomologacionService {
   ) {
     const homologacion = await this.prisma.homologacion.findUnique({
       where: { proveedorId },
-      include: { proveedor: true },
+      include: { proveedor: true, verificaciones: true },
     });
     if (!homologacion) throw new NotFoundException('Homologación no encontrada.');
+    if (estado === 'APROBADO') {
+      const bloqueantes = homologacion.verificaciones.filter(
+        (v) => v.resultado === ResultadoLista.PENDIENTE_MANUAL || v.resultado === ResultadoLista.COINCIDENCIA,
+      );
+      if (bloqueantes.length > 0) {
+        throw new ConflictException(
+          `Antes de aprobar, resuelve las verificaciones en listas: ${bloqueantes.map((v) => v.lista).join(', ')}.`,
+        );
+      }
+    }
 
     // Both writes must land together — a homologación left APROBADO with a
     // stale ProveedorProfile.score would silently corrupt the public
@@ -168,7 +255,16 @@ export class HomologacionService {
         },
       }),
       ...(estado === 'APROBADO'
-        ? [this.prisma.proveedorProfile.update({ where: { id: proveedorId }, data: { score } })]
+        ? [
+            this.prisma.proveedorProfile.update({ where: { id: proveedorId }, data: { score } }),
+            // Approval is the review of what was uploaded — without this no
+            // document ever reaches VALIDADO, and per-company requirements
+            // (which check VALIDADO) could never be met.
+            this.prisma.documentoHomologacion.updateMany({
+              where: { homologacionId: homologacion.id, estado: EstadoDocumento.SUBIDO },
+              data: { estado: EstadoDocumento.VALIDADO },
+            }),
+          ]
         : []),
     ]);
     await this.auditLog.log({

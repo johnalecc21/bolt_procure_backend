@@ -11,6 +11,9 @@ import {
   EstadoCaso,
 } from '@prisma/client';
 import { createClient } from '@supabase/supabase-js';
+import { DOCUMENTOS_BASE } from '../src/homologacion/documentos-base';
+
+const DOCUMENTOS_OPCIONALES = DOCUMENTOS_BASE.filter((d) => !d.obligatorio);
 
 const prisma = new PrismaClient();
 const DEMO_PASSWORD = 'demo123';
@@ -181,6 +184,7 @@ async function main() {
         { homologacionId: cloudsphereHomologacion.id, nombre: 'Estados financieros', categoria: 'FINANCIERO', estado: 'VALIDADO' },
         { homologacionId: cloudsphereHomologacion.id, nombre: 'Certificado ISO 27001', categoria: 'CERTIFICACIONES', estado: 'VALIDADO', vigencia: new Date('2027-03-01') },
         { homologacionId: cloudsphereHomologacion.id, nombre: 'Referencias comerciales', categoria: 'REFERENCIAS', estado: 'VALIDADO' },
+        ...DOCUMENTOS_OPCIONALES.map((d) => ({ homologacionId: cloudsphereHomologacion.id, ...d })),
       ],
     });
   }
@@ -216,6 +220,7 @@ async function main() {
           { homologacionId: homologacion.id, nombre: 'Estados financieros', categoria: 'FINANCIERO', estado: 'VALIDADO' },
           { homologacionId: homologacion.id, nombre: 'Certificado ISO / BASC / ESG', categoria: 'CERTIFICACIONES', estado: 'VALIDADO' },
           { homologacionId: homologacion.id, nombre: 'Referencias comerciales', categoria: 'REFERENCIAS', estado: 'VALIDADO' },
+          ...DOCUMENTOS_OPCIONALES.map((d) => ({ homologacionId: homologacion.id, ...d })),
         ],
       });
     }

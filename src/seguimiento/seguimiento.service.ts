@@ -6,6 +6,7 @@ import { NotificacionesService } from '../notificaciones/notificaciones.service'
 import { formatContratoCodigo } from '../common/utils/codigo.util';
 import { CreateHitoDto } from './dto/create-hito.dto';
 import { UpdateHitoDto } from './dto/update-hito.dto';
+import { formatMonto } from '../common/utils/moneda.util';
 
 @Injectable()
 export class SeguimientoService {
@@ -86,6 +87,7 @@ export class SeguimientoService {
               contratoId: hito.contratoId,
               proveedorId,
               monto,
+              moneda: hito.contrato.moneda,
               fechaEmision: new Date(),
               fechaPagoPactada,
             },
@@ -97,7 +99,7 @@ export class SeguimientoService {
           companyId,
           usuario: actorNombre,
           accion: 'Pago generado por hito completado',
-          detalle: `${formatContratoCodigo(hito.contrato.tipo, hito.contrato.numero)} — ${hito.label} (${hito.porcentaje}%) → $${monto.toLocaleString()}`,
+          detalle: `${formatContratoCodigo(hito.contrato.tipo, hito.contrato.numero)} — ${hito.label} (${hito.porcentaje}%) → ${formatMonto(monto, hito.contrato.moneda)}`,
         });
         const proveedor = await this.prisma.proveedorProfile.findUnique({ where: { id: proveedorId }, include: { user: true } });
         if (proveedor?.user) {
@@ -105,7 +107,7 @@ export class SeguimientoService {
             proveedor.user.id,
             'CONTRATO',
             'Nuevo pago generado',
-            `"${hito.label}" fue marcado como completado — se generó un pago de $${monto.toLocaleString()} en ${hito.contrato.condicionesPagoDias} días.`,
+            `"${hito.label}" fue marcado como completado — se generó un pago de ${formatMonto(monto, hito.contrato.moneda)} en ${hito.contrato.condicionesPagoDias} días.`,
             '/proveedor/pagos',
           );
         }

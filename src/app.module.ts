@@ -44,6 +44,7 @@ import { InternoModule } from './interno/interno.module';
 import { PreguntasModule } from './preguntas/preguntas.module';
 import { VencimientosModule } from './vencimientos/vencimientos.module';
 import { AnaliticaModule } from './analitica/analitica.module';
+import { EvaluacionesModule } from './evaluaciones/evaluaciones.module';
 
 @Module({
   imports: [
@@ -156,6 +157,7 @@ import { AnaliticaModule } from './analitica/analitica.module';
     PreguntasModule,
     VencimientosModule,
     AnaliticaModule,
+    EvaluacionesModule,
   ],
   controllers: [AppController],
   providers: [

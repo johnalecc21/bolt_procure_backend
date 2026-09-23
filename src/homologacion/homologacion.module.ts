@@ -6,10 +6,12 @@ import { AuditLogModule } from '../audit-log/audit-log.module';
 import { ProveedoresModule } from '../proveedores/proveedores.module';
 import { OcrService } from './ocr.service';
 import { OfacService } from './ofac.service';
+import { OnuService } from './onu.service';
+import { ListasRestrictivasService } from './listas-restrictivas.service';
 
 @Module({
   imports: [AuditLogModule, ProveedoresModule],
   controllers: [HomologacionController],
-  providers: [HomologacionService, HomologacionScoringService, OcrService, OfacService],
+  providers: [HomologacionService, HomologacionScoringService, OcrService, OfacService, OnuService, ListasRestrictivasService],
 })
 export class HomologacionModule {}

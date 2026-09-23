@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { PortalOnly } from '../common/decorators/portal.decorator';
@@ -8,6 +8,8 @@ import { HomologacionService } from './homologacion.service';
 import { ResolverDto } from './dto/resolver.dto';
 import { UploadUrlDto } from './dto/upload-url.dto';
 import { ConfirmUploadDto } from './dto/confirm-upload.dto';
+import { RegistrarVerificacionDto } from './dto/verificacion.dto';
+import { UpdateRequisitosDto } from './dto/requisitos.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('homologacion')
@@ -68,5 +70,30 @@ export class HomologacionController {
     @Body() dto: ResolverDto,
   ) {
     return this.service.resolver(proveedorId, dto.estado, dto.score, user.email, dto.motivo);
+  }
+
+  @PortalOnly('INTERNO')
+  @Roles(Role.COMPLIANCE_OPS)
+  @Post(':proveedorId/verificaciones')
+  registrarVerificacion(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('proveedorId') proveedorId: string,
+    @Body() dto: RegistrarVerificacionDto,
+  ) {
+    return this.service.registrarVerificacion(proveedorId, dto.lista, dto.resultado, dto.detalle, user.email);
+  }
+
+  /** Document categories this client company requires before inviting a proveedor. */
+  @PortalOnly('CLIENTE')
+  @Get('requisitos')
+  getRequisitos(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.getRequisitos(user.companyId);
+  }
+
+  @PortalOnly('CLIENTE')
+  @Roles(Role.ADMIN_CLIENTE)
+  @Put('requisitos')
+  updateRequisitos(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateRequisitosDto) {
+    return this.service.updateRequisitos(user.companyId, dto.categorias, user.email);
   }
 }

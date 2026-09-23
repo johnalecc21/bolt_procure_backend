@@ -1,11 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoDocumento, EstadoHomologacion, EstadoRequerimiento, Prisma, Role, TipoAprobacion, TipoRegla } from '@prisma/client';
+import { EstadoDocumento, EstadoHomologacion, EstadoRequerimiento, Prisma, Role, TipoAprobacion, TipoRegla, Moneda } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { StorageService } from '../storage/storage.service';
 import { formatRequerimientoCodigo } from '../common/utils/codigo.util';
 import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
+import { categoriasFaltantes, esElegible } from '../homologacion/requisitos.util';
+import { formatMonto } from '../common/utils/moneda.util';
 
 const BUCKET = 'requerimientos-documentos';
 
@@ -43,6 +45,7 @@ export class RequerimientosService {
     tituloRequerimiento: string,
     monto: number,
     aprobacionId: string,
+    moneda: Moneda = Moneda.USD,
   ) {
     const roles = tipoRegla === TipoRegla.SECUENCIAL ? [rolesRequeridos[pasoActual]] : rolesRequeridos;
     if (!roles.length) return;
@@ -56,7 +59,7 @@ export class RequerimientosService {
           m.user.id,
           'APROBACION',
           'Aprobación pendiente',
-          `"${tituloRequerimiento}" ($${monto.toLocaleString('es-CO')}) necesita tu aprobación.`,
+          `"${tituloRequerimiento}" (${formatMonto(monto, moneda)}) necesita tu aprobación.`,
           `/cliente/aprobaciones?highlight=${aprobacionId}`,
         ),
       ),
@@ -66,15 +69,34 @@ export class RequerimientosService {
   // Defense in depth: the directory UI only lists approved providers, but the
   // endpoints below can be called directly, so re-check eligibility here
   // regardless of what was sent.
-  private async filtrarElegibles(proveedorIds: string[]) {
-    const candidatos = await this.prisma.proveedorProfile.findMany({
-      where: { id: { in: proveedorIds } },
-      include: { homologacion: true },
-    });
-    return {
-      elegibles: candidatos.filter((p) => p.homologacion?.estado === EstadoHomologacion.APROBADO),
-      excluidos: candidatos.filter((p) => p.homologacion?.estado !== EstadoHomologacion.APROBADO),
-    };
+  /**
+   * Splits candidates into invitable and excluded: an APROBADO homologación
+   * plus every document category this company requires (VALIDADO, unexpired).
+   */
+  private async filtrarElegibles(companyId: string, proveedorIds: string[]) {
+    const [company, candidatos] = await Promise.all([
+      this.prisma.company.findUniqueOrThrow({
+        where: { id: companyId },
+        select: { categoriasHomologacionRequeridas: true },
+      }),
+      this.prisma.proveedorProfile.findMany({
+        where: { id: { in: proveedorIds } },
+        include: { homologacion: { include: { documentos: true } } },
+      }),
+    ]);
+    const requeridas = company.categoriasHomologacionRequeridas;
+    const elegibles = candidatos.filter((p) => esElegible(p.homologacion, requeridas));
+    const excluidos = candidatos
+      .filter((p) => !esElegible(p.homologacion, requeridas))
+      .map((p) => ({
+        id: p.id,
+        nombre: p.nombre,
+        motivo:
+          p.homologacion?.estado !== EstadoHomologacion.APROBADO
+            ? 'Homologación no aprobada'
+            : `Faltan documentos validados: ${categoriasFaltantes(p.homologacion, requeridas).join(', ')}`,
+      }));
+    return { elegibles, excluidos };
   }
 
   async list(companyId: string, userId: string, role: Role) {
@@ -119,8 +141,13 @@ export class RequerimientosService {
 
   async create(companyId: string, solicitanteId: string, dto: CreateRequerimientoDto) {
     const { elegibles, excluidos } = dto.proveedorIds?.length
-      ? await this.filtrarElegibles(dto.proveedorIds)
+      ? await this.filtrarElegibles(companyId, dto.proveedorIds)
       : { elegibles: [], excluidos: [] };
+
+    const company = await this.prisma.company.findUniqueOrThrow({
+      where: { id: companyId },
+      select: { monedaBase: true },
+    });
 
     let rolesRequeridosCreados: Role[] = [];
     let tipoReglaCreado: TipoRegla = TipoRegla.UNICA;
@@ -135,6 +162,7 @@ export class RequerimientosService {
           descripcion: dto.descripcion,
           categoria: dto.categoria,
           montoEstimado: dto.montoEstimado,
+          moneda: dto.moneda ?? company.monedaBase,
           fechaLimite: new Date(dto.fechaLimite),
           criteriosPeso: dto.criteriosPeso,
           especificaciones: dto.especificaciones as unknown as Prisma.InputJsonValue,
@@ -194,9 +222,10 @@ export class RequerimientosService {
       requerimiento.titulo,
       requerimiento.montoEstimado,
       aprobacionIdCreada,
+      requerimiento.moneda,
     );
 
-    return { ...requerimiento, excluidosPorHomologacion: excluidos.map((p) => ({ id: p.id, nombre: p.nombre })) };
+    return { ...requerimiento, excluidosPorHomologacion: excluidos };
   }
 
   async updateEstado(companyId: string, id: string, estado: EstadoRequerimiento, actorNombre: string) {
@@ -298,13 +327,13 @@ export class RequerimientosService {
     });
     const yaInvitados = new Set(existentes.map((i) => i.proveedorId));
 
-    const { elegibles: elegiblesTodos, excluidos } = await this.filtrarElegibles(proveedorIds);
+    const { elegibles: elegiblesTodos, excluidos } = await this.filtrarElegibles(companyId, proveedorIds);
     const elegibles = elegiblesTodos.filter((p) => !yaInvitados.has(p.id));
     if (elegibles.length === 0 && excluidos.length === 0) {
       throw new BadRequestException('Los proveedores seleccionados ya fueron invitados a este proceso.');
     }
     if (elegibles.length === 0) {
-      throw new BadRequestException('Ninguno de los proveedores seleccionados tiene homologación aprobada.');
+      throw new BadRequestException('Ninguno de los proveedores seleccionados cumple los requisitos de homologación de tu empresa.');
     }
 
     await this.prisma.$transaction([
@@ -348,7 +377,7 @@ export class RequerimientosService {
     const actualizado = await this.findOne(companyId, id);
     return {
       ...actualizado,
-      excluidosPorHomologacion: excluidos.map((p) => ({ id: p.id, nombre: p.nombre })),
+      excluidosPorHomologacion: excluidos,
     };
   }
 }

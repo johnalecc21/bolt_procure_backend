@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoHomologacion } from '@prisma/client';
+import { EstadoDocumento, EstadoHomologacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { UpdatePerfilDto } from './dto/update-perfil.dto';
+import { DOCUMENTOS_BASE } from '../homologacion/documentos-base';
 
 const PALETTE = [
   'oklch(0.46 0.14 246)',
@@ -32,6 +33,52 @@ export class ProveedoresService {
       // be browsed/filtered, not paged) — growth guard-rail, not page size.
       take: 200,
     });
+  }
+
+  /**
+   * Only what a prospective client should see before any contact: no
+   * contacts, alertas, NIT or document files — just the verified facts.
+   */
+  async vitrina(id: string) {
+    const proveedor = await this.prisma.proveedorProfile.findFirst({
+      where: { id, homologacion: { estado: EstadoHomologacion.APROBADO } },
+      include: {
+        homologacion: {
+          select: {
+            score: true,
+            proximaRevalidacion: true,
+            documentos: {
+              where: { estado: EstadoDocumento.VALIDADO },
+              select: { categoria: true, vigencia: true },
+            },
+          },
+        },
+      },
+    });
+    if (!proveedor) throw new NotFoundException('Proveedor no encontrado.');
+    const ahora = new Date();
+    const categoriasVerificadas = [
+      ...new Set(
+        proveedor.homologacion!.documentos.filter((d) => !d.vigencia || d.vigencia > ahora).map((d) => d.categoria),
+      ),
+    ];
+    return {
+      id: proveedor.id,
+      nombre: proveedor.nombre,
+      iniciales: proveedor.iniciales,
+      color: proveedor.color,
+      categorias: proveedor.categorias,
+      ubicacion: proveedor.ubicacion,
+      certificaciones: proveedor.certificaciones,
+      score: proveedor.score,
+      procesosGanados: proveedor.procesosGanados,
+      entregasATiempo: proveedor.entregasATiempo,
+      desempenoPromedio: proveedor.desempenoPromedio,
+      evaluacionesCount: proveedor.evaluacionesCount,
+      homologadoHasta: proveedor.homologacion!.proximaRevalidacion,
+      categoriasVerificadas,
+      miembroDesde: proveedor.createdAt,
+    };
   }
 
   async findOne(id: string) {
@@ -106,14 +153,7 @@ export class ProveedoresService {
     await this.prisma.homologacion.create({
       data: {
         proveedorId: proveedor.id,
-        documentos: {
-          create: [
-            { nombre: 'RUT / NIT', categoria: 'LEGAL' },
-            { nombre: 'Estados financieros', categoria: 'FINANCIERO' },
-            { nombre: 'Certificado ISO / BASC / ESG', categoria: 'CERTIFICACIONES' },
-            { nombre: 'Referencias comerciales', categoria: 'REFERENCIAS' },
-          ],
-        },
+        documentos: { create: DOCUMENTOS_BASE },
       },
     });
     return proveedor;

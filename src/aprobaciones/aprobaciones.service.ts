@@ -145,6 +145,7 @@ export class AprobacionesService {
         aprobacion.requerimiento.titulo,
         aprobacion.monto,
         aprobacion.id,
+        aprobacion.requerimiento.moneda,
       );
     }
     return { ok: true };

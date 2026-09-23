@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
+import { Moneda } from '@prisma/client';
 import {
   IsArray,
+  IsEnum,
   IsInt,
   IsISO8601,
   IsObject,
@@ -34,6 +36,11 @@ export class CreateRequerimientoDto {
   @IsInt()
   @Min(0)
   montoEstimado: number;
+
+  /** Defaults to the company's monedaBase. */
+  @IsEnum(Moneda)
+  @IsOptional()
+  moneda?: Moneda;
 
   @IsISO8601()
   fechaLimite: string;

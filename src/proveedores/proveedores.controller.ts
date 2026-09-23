@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { PortalOnly } from '../common/decorators/portal.decorator';
+import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ProveedoresService } from './proveedores.service';
@@ -44,6 +45,16 @@ export class ProveedoresController {
   @Post('mine/onboarding/completar')
   completarOnboarding(@CurrentUser() user: AuthenticatedUser) {
     return this.service.completarOnboarding(user.sub);
+  }
+
+  /**
+   * Public showcase ("vitrina") — shareable profile for a homologated
+   * proveedor, readable without an account. Registered before ':id'.
+   */
+  @Public()
+  @Get('vitrina/:id')
+  vitrina(@Param('id') id: string) {
+    return this.service.vitrina(id);
   }
 
   @PortalOnly('CLIENTE', 'INTERNO')

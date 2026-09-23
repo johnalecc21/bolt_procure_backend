@@ -5,6 +5,7 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { formatRequerimientoCodigo } from '../common/utils/codigo.util';
 import { CreateAdjudicacionDto } from './dto/create-adjudicacion.dto';
+import { formatMonto } from '../common/utils/moneda.util';
 
 const UMBRAL_LEGAL = 50000;
 
@@ -37,7 +38,7 @@ export class AdjudicacionService {
     // the contract still getting signed.
     const requerimiento = await this.prisma.requerimiento.findUnique({
       where: { id: requerimientoId },
-      select: { titulo: true, companyId: true, numero: true },
+      select: { titulo: true, companyId: true, numero: true, moneda: true },
     });
     await this.prisma.adjudicacion.update({
       where: { requerimientoId },
@@ -51,7 +52,7 @@ export class AdjudicacionService {
       companyId: requerimiento?.companyId,
       usuario: actorNombre,
       accion: 'Adjudicación confirmada',
-      detalle: `${requerimiento ? formatRequerimientoCodigo(requerimiento.numero) : requerimientoId} → ${proveedor?.nombre ?? adjudicacion.proveedorId} ($${adjudicacion.precioFinal})`,
+      detalle: `${requerimiento ? formatRequerimientoCodigo(requerimiento.numero) : requerimientoId} → ${proveedor?.nombre ?? adjudicacion.proveedorId} (${formatMonto(adjudicacion.precioFinal, requerimiento?.moneda)})`,
     });
     if (requerimiento && proveedor?.user) {
       await this.notificaciones.create(
@@ -133,6 +134,7 @@ export class AdjudicacionService {
           proveedorNombre: proveedor.nombre,
           categoria: requerimiento.categoria,
           monto: adjudicacion.precioFinal,
+          moneda: requerimiento.moneda,
           vigenciaInicio: hoy,
           vigenciaFin,
           condicionesPagoDias: adjudicacion.condicionesPagoDias,

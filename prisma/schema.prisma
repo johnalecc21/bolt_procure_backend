@@ -56,6 +56,26 @@ enum CategoriaDocumento {
   FINANCIERO
   CERTIFICACIONES
   REFERENCIAS
+  HSE
+  SOSTENIBILIDAD
+  RIESGO_FINANCIERO
+  LAFT
+}
+
+enum Moneda {
+  COP
+  USD
+  MXN
+  PEN
+  CLP
+  BRL
+}
+
+enum ResultadoLista {
+  SIN_COINCIDENCIA
+  COINCIDENCIA
+  NO_DISPONIBLE
+  PENDIENTE_MANUAL
 }
 
 enum TipoContrato {
@@ -165,16 +185,24 @@ enum EstadoSubasta {
 // ---------------------------------------------------------------------------
 
 model Company {
-  id          String            @id @default(cuid())
-  nombre      String
-  plan        PlanCliente       @default(STARTER)
-  facturacion EstadoFacturacion @default(AL_DIA)
-  createdAt   DateTime          @default(now())
+  id                               String               @id @default(cuid())
+  nombre                           String
+  plan                             PlanCliente          @default(STARTER)
+  facturacion                      EstadoFacturacion    @default(AL_DIA)
+  createdAt                        DateTime             @default(now())
   // Adjudicaciones at or above this amount generate a Contrato Marco instead
   // of a simple PO — independent from the "revisión legal" threshold, since
   // a company may want legal review earlier (or later) than it wants a
   // formal master contract.
-  umbralContratoMarco Int @default(50000)
+  umbralContratoMarco              Int                  @default(50000)
+  // ISO-3166 alpha-2 — drives which tax id / restrictive lists apply.
+  pais                             String               @default("CO")
+  // Default currency for new requerimientos; analytics aggregate only in it.
+  monedaBase                       Moneda               @default(USD)
+  // Document categories a proveedor must have VALIDADO (and not expired) to
+  // be invited by this company, on top of an APROBADO homologación. Empty
+  // (the default) keeps the original rule: APROBADO is enough.
+  categoriasHomologacionRequeridas CategoriaDocumento[] @default([])
 
   memberships    CompanyMembership[]
   requerimientos Requerimiento[]
@@ -184,6 +212,7 @@ model Company {
   casosConsultor CasoConsultor[]
   invitaciones   Invitacion[]
   auditLogs      AuditLogEntry[]
+  evaluaciones   EvaluacionDesempeno[]
 
   @@map("companies")
 }
@@ -191,31 +220,32 @@ model Company {
 model User {
   // Primary key mirrors the Supabase Auth user id (auth.users.id) — Supabase
   // owns credentials/sessions/MFA, this table only holds our app profile data.
-  id          String    @id
-  nombre      String
-  email       String    @unique
-  portal      Portal
-  role        Role
-  iniciales   String
-  cargo       String?
-  activo      Boolean   @default(true)
-  lastLoginAt DateTime?
-  createdAt   DateTime  @default(now())
+  id                  String    @id
+  nombre              String
+  email               String    @unique
+  portal              Portal
+  role                Role
+  iniciales           String
+  cargo               String?
+  activo              Boolean   @default(true)
+  lastLoginAt         DateTime?
+  createdAt           DateTime  @default(now())
   /// Null until the user explicitly accepts the Términos y Condiciones / Aviso de
   /// Privacidad — gates a one-time acceptance modal on first entry to a portal.
   terminosAceptadosEn DateTime?
 
   memberships               CompanyMembership[]
   proveedorProfile          ProveedorProfile?
-  requerimientosSolicitados Requerimiento[]     @relation("Solicitante")
-  aprobacionesResueltas     Aprobacion[]        @relation("ResueltoPor")
+  requerimientosSolicitados Requerimiento[]       @relation("Solicitante")
+  aprobacionesResueltas     Aprobacion[]          @relation("ResueltoPor")
   aprobacionPasos           AprobacionPaso[]
   notificaciones            Notificacion[]
   auditLogs                 AuditLogEntry[]
-  casosConsultor            CasoConsultor[]     @relation("Consultor")
-  disputasMediadas          Disputa[]           @relation("Mediador")
+  casosConsultor            CasoConsultor[]       @relation("Consultor")
+  disputasMediadas          Disputa[]             @relation("Mediador")
   mensajesDisputa           MensajeDisputa[]
-  preguntasRespondidas      Pregunta[]          @relation("PreguntaRespondidoPor")
+  preguntasRespondidas      Pregunta[]            @relation("PreguntaRespondidoPor")
+  evaluacionesRealizadas    EvaluacionDesempeno[]
 
   @@map("users")
 }
@@ -249,6 +279,7 @@ model Requerimiento {
   categoria            String
   estado               EstadoRequerimiento @default(BORRADOR)
   montoEstimado        Int
+  moneda               Moneda              @default(USD)
   fechaLimite          DateTime
   progreso             Int                 @default(0)
   proveedoresInvitados Int                 @default(0)
@@ -318,8 +349,8 @@ model Aprobacion {
   pasoActual      Int              @default(0)
   createdAt       DateTime         @default(now())
 
-  requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
-  resueltoPor   User?         @relation("ResueltoPor", fields: [resueltoPorId], references: [id])
+  requerimiento Requerimiento    @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
+  resueltoPor   User?            @relation("ResueltoPor", fields: [resueltoPorId], references: [id])
   pasos         AprobacionPaso[]
 
   @@map("aprobaciones")
@@ -359,28 +390,33 @@ model MatrizAprobacionRegla {
 // ---------------------------------------------------------------------------
 
 model ProveedorProfile {
-  id                    String   @id @default(cuid())
-  userId                String?  @unique
-  nombre                String
-  iniciales             String
-  categorias            String[]
-  score                 Int      @default(0)
-  ubicacion             String
-  certificaciones       String[]
-  procesosGanados       Int      @default(0)
-  entregasATiempo       Int      @default(0)
-  disputasCount         Int      @default(0)
-  color                 String
-  onboardingCompletado  Boolean  @default(false)
-  createdAt             DateTime @default(now())
+  id                   String   @id @default(cuid())
+  userId               String?  @unique
+  nombre               String
+  iniciales            String
+  categorias           String[]
+  score                Int      @default(0)
+  ubicacion            String
+  certificaciones      String[]
+  procesosGanados      Int      @default(0)
+  entregasATiempo      Int      @default(0)
+  disputasCount        Int      @default(0)
+  color                String
+  onboardingCompletado Boolean  @default(false)
+  // Denormalized from EvaluacionDesempeno (0-100), recomputed on every new
+  // evaluation so directory listings don't aggregate on each request.
+  desempenoPromedio    Float?
+  evaluacionesCount    Int      @default(0)
+  createdAt            DateTime @default(now())
 
-  user         User?         @relation(fields: [userId], references: [id])
+  user         User?                 @relation(fields: [userId], references: [id])
   homologacion Homologacion?
   ofertas      Oferta[]
   invitaciones Invitacion[]
   pagos        PagoPO[]
   disputas     Disputa[]
   preguntas    Pregunta[]
+  evaluaciones EvaluacionDesempeno[]
 
   @@map("proveedor_profiles")
 }
@@ -396,19 +432,23 @@ model Homologacion {
   /// NIT/RUT number detected by OCR on the "RUT / NIT" document, for manual cross-check against RUES.
   nitDetectado        String?
 
-  proveedor  ProveedorProfile        @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
-  documentos DocumentoHomologacion[]
+  proveedor      ProveedorProfile        @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+  documentos     DocumentoHomologacion[]
+  verificaciones VerificacionLista[]
 
   @@index([estado])
   @@map("homologaciones")
 }
 
 model DocumentoHomologacion {
-  id             String              @id @default(cuid())
+  id             String             @id @default(cuid())
   homologacionId String
   nombre         String
-  categoria      CategoriaDocumento  @default(LEGAL)
-  estado         EstadoDocumento     @default(PENDIENTE)
+  categoria      CategoriaDocumento @default(LEGAL)
+  // Required ones block "enviar" until uploaded; optional ones only matter
+  // when a client company lists their category as required for invitation.
+  obligatorio    Boolean            @default(true)
+  estado         EstadoDocumento    @default(PENDIENTE)
   vigencia       DateTime?
   /// Path within the `homologacion-documentos` Supabase Storage bucket, set once a file is actually uploaded.
   storagePath    String?
@@ -465,45 +505,49 @@ model Adjudicacion {
 // ---------------------------------------------------------------------------
 
 model Contrato {
-  id              String         @id @default(cuid())
+  id                    String         @id @default(cuid())
   // Human-readable sequential code (CTO-0001 / PO-0001 / ADD-0001, prefix
   // from `tipo`) — same pattern as Requerimiento.numero.
-  numero          Int            @unique @default(autoincrement())
-  companyId       String
-  requerimientoId String?
-  tipo            TipoContrato
-  proveedorNombre String
-  categoria       String
-  monto           Int
-  vigenciaInicio  DateTime
-  vigenciaFin     DateTime
-  estado          EstadoContrato @default(ACTIVO)
-  createdAt       DateTime       @default(now())
+  numero                Int            @unique @default(autoincrement())
+  companyId             String
+  requerimientoId       String?
+  tipo                  TipoContrato
+  proveedorNombre       String
+  categoria             String
+  monto                 Int
+  // Copied from the requerimiento at signing time (or from the padre for a
+  // PO under a Contrato Marco) so every amount downstream has its currency.
+  moneda                Moneda         @default(USD)
+  vigenciaInicio        DateTime
+  vigenciaFin           DateTime
+  estado                EstadoContrato @default(ACTIVO)
+  createdAt             DateTime       @default(now())
   // When the company attaches their own PO/contract file, this points at it in
   // the `contratos-documentos` Supabase Storage bucket — null means whoever
   // downloads this contract gets the Procurex-generated template instead.
-  archivoNombre       String?
-  archivoStoragePath  String?
+  archivoNombre         String?
+  archivoStoragePath    String?
   // Set on a PO issued under a Contrato Marco (tipo CONTRATO) — links the
   // child PO back to the master agreement it was issued under.
-  contratoPadreId String?
+  contratoPadreId       String?
   // Copied from the Adjudicacion at signing time so payment-on-milestone
   // (see HitoSeguimiento.porcentaje) doesn't need to reach back through
   // requerimiento → adjudicacion just to know when a generated PagoPO is due.
-  condicionesPagoDias Int @default(30)
+  condicionesPagoDias   Int            @default(30)
   // Set by the daily vencimientos cron the first time each threshold is
   // crossed, so a contract nearing expiry gets exactly one notification per
   // threshold instead of one every day the cron runs.
-  recordatorio60Enviado Boolean @default(false)
-  recordatorio30Enviado Boolean @default(false)
-  recordatorio15Enviado Boolean @default(false)
+  recordatorio60Enviado Boolean        @default(false)
+  recordatorio30Enviado Boolean        @default(false)
+  recordatorio15Enviado Boolean        @default(false)
 
-  company       Company           @relation(fields: [companyId], references: [id])
-  requerimiento Requerimiento?    @relation(fields: [requerimientoId], references: [id])
+  company       Company               @relation(fields: [companyId], references: [id])
+  requerimiento Requerimiento?        @relation(fields: [requerimientoId], references: [id])
   hitos         HitoSeguimiento[]
   pagos         PagoPO[]
-  padre         Contrato?         @relation("ContratoPadreHijas", fields: [contratoPadreId], references: [id])
-  hijas         Contrato[]        @relation("ContratoPadreHijas")
+  padre         Contrato?             @relation("ContratoPadreHijas", fields: [contratoPadreId], references: [id])
+  hijas         Contrato[]            @relation("ContratoPadreHijas")
+  evaluaciones  EvaluacionDesempeno[]
 
   @@index([companyId])
   @@index([estado])
@@ -511,20 +555,20 @@ model Contrato {
 }
 
 model HitoSeguimiento {
-  id           String     @id @default(cuid())
-  contratoId   String
-  label        String
-  comprometido DateTime
-  real         DateTime?
-  estado       EstadoHito @default(PENDIENTE)
-  orden        Int        @default(0)
+  id             String     @id @default(cuid())
+  contratoId     String
+  label          String
+  comprometido   DateTime
+  real           DateTime?
+  estado         EstadoHito @default(PENDIENTE)
+  orden          Int        @default(0)
   // % of the contrato's monto released when this hito is marked COMPLETADO —
   // moving it to COMPLETADO generates a real PagoPO for that amount.
-  porcentaje   Int        @default(0)
-  pagoGeneradoId String?  @unique
+  porcentaje     Int        @default(0)
+  pagoGeneradoId String?    @unique
 
-  contrato    Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
-  pagoGenerado PagoPO? @relation(fields: [pagoGeneradoId], references: [id])
+  contrato     Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  pagoGenerado PagoPO?  @relation(fields: [pagoGeneradoId], references: [id])
 
   @@map("hitos_seguimiento")
 }
@@ -621,6 +665,7 @@ model PagoPO {
   contratoId       String
   proveedorId      String
   monto            Int
+  moneda           Moneda     @default(USD)
   fechaEmision     DateTime
   fechaPagoPactada DateTime
   estado           EstadoPago @default(PENDIENTE)
@@ -740,4 +785,52 @@ model Puja {
 
   @@unique([sessionId, proveedorId])
   @@map("pujas")
+}
+
+/// One screening of a homologación against a restrictive list. Automated
+/// lists (OFAC, ONU) are written by the scoring pass; lists with no public
+/// API (Procuraduría, Contraloría, Policía) start PENDIENTE_MANUAL and are
+/// resolved by Compliance after checking the official site.
+model VerificacionLista {
+  id             String         @id @default(cuid())
+  homologacionId String
+  lista          String
+  resultado      ResultadoLista
+  detalle        String?
+  verificadoPor  String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  homologacion Homologacion @relation(fields: [homologacionId], references: [id], onDelete: Cascade)
+
+  @@unique([homologacionId, lista])
+  @@map("verificaciones_lista")
+}
+
+/// Buyer's performance evaluation of a proveedor on one contrato. Each
+/// criterion is 1-5; `puntaje` is their weighted average scaled to 0-100.
+model EvaluacionDesempeno {
+  id                 String   @id @default(cuid())
+  companyId          String
+  contratoId         String
+  proveedorId        String
+  evaluadorId        String
+  calidad            Int
+  plazos             Int
+  servicio           Int
+  hse                Int
+  puntaje            Int
+  comentario         String?
+  requierePlanMejora Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  company   Company          @relation(fields: [companyId], references: [id])
+  contrato  Contrato         @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+  proveedor ProveedorProfile @relation(fields: [proveedorId], references: [id])
+  evaluador User             @relation(fields: [evaluadorId], references: [id])
+
+  @@index([proveedorId])
+  @@index([contratoId])
+  @@index([companyId])
+  @@map("evaluaciones_desempeno")
 }
