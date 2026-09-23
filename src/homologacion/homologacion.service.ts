@@ -63,7 +63,7 @@ export class HomologacionService {
     return this.prisma.homologacion.update({
       where: { proveedorId },
       data: { cuestionario: merged as object },
-      include: { documentos: true },
+      include: { documentos: { orderBy: { obligatorio: 'desc' } } },
     });
   }
 
