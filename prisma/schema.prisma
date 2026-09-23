@@ -44,6 +44,16 @@ enum EstadoHomologacion {
   ZONA_GRIS
 }
 
+/// Nivel de riesgo del modelo de homologación basado en riesgo (score ponderado
+/// por 6 categorías). Determina la cadena de aprobación requerida y la
+/// periodicidad de reevaluación — ver HomologacionScoringService.NIVEL_RIESGO_INFO.
+enum NivelRiesgo {
+  BAJO
+  MEDIO
+  ALTO
+  CRITICO
+}
+
 enum EstadoDocumento {
   PENDIENTE
   SUBIDO
@@ -260,6 +270,7 @@ model CompanyMembership {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@unique([userId, companyId])
+  @@index([companyId])
   @@map("company_memberships")
 }
 
@@ -390,24 +401,25 @@ model MatrizAprobacionRegla {
 // ---------------------------------------------------------------------------
 
 model ProveedorProfile {
-  id                   String   @id @default(cuid())
-  userId               String?  @unique
-  nombre               String
-  iniciales            String
-  categorias           String[]
-  score                Int      @default(0)
-  ubicacion            String
-  certificaciones      String[]
-  procesosGanados      Int      @default(0)
-  entregasATiempo      Int      @default(0)
-  disputasCount        Int      @default(0)
-  color                String
-  onboardingCompletado Boolean  @default(false)
+  id                    String   @id @default(cuid())
+  userId                String?  @unique
+  nombre                String
+  iniciales             String
+  categorias            String[]
+  score                 Int      @default(0)
+  ubicacion             String
+  sitioWeb              String?
+  certificaciones       String[]
+  procesosGanados       Int      @default(0)
+  entregasATiempo       Int      @default(0)
+  disputasCount         Int      @default(0)
+  color                 String
+  onboardingCompletado  Boolean  @default(false)
   // Denormalized from EvaluacionDesempeno (0-100), recomputed on every new
   // evaluation so directory listings don't aggregate on each request.
-  desempenoPromedio    Float?
-  evaluacionesCount    Int      @default(0)
-  createdAt            DateTime @default(now())
+  desempenoPromedio     Float?
+  evaluacionesCount     Int      @default(0)
+  createdAt             DateTime @default(now())
 
   user         User?                 @relation(fields: [userId], references: [id])
   homologacion Homologacion?
@@ -431,6 +443,16 @@ model Homologacion {
   proximaRevalidacion DateTime?
   /// NIT/RUT number detected by OCR on the "RUT / NIT" document, for manual cross-check against RUES.
   nitDetectado        String?
+  /// Respuestas del Cuestionario de Homologación de Proveedores (secciones 1-6 y 8),
+  /// guardado como borrador editable hasta que se envía a validación. Shape: HomologacionCuestionario.
+  cuestionario        Json?
+  /// Desglose del score por categoría ponderada (financiero/legal/compliance/tecnico/operacional/comercial),
+  /// calculado en HomologacionScoringService.evaluar(). Shape: ScoreDesglose.
+  scoreDesglose       Json?
+  nivelRiesgo         NivelRiesgo?
+  /// Último motivo de "solicitar información" del panel de Compliance, visible al proveedor
+  /// mientras la homologación está de vuelta en BORRADOR para que la corrija.
+  observaciones       String?
 
   proveedor      ProveedorProfile        @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
   documentos     DocumentoHomologacion[]
@@ -497,6 +519,7 @@ model Adjudicacion {
 
   requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
 
+  @@index([proveedorId])
   @@map("adjudicaciones")
 }
 

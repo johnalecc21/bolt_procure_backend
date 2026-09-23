@@ -28,15 +28,20 @@ export class AnaliticaService {
     return { moneda, ahorroMensual, tiempoCicloCategoria, concentracionGasto, topProveedores };
   }
 
-  /** Real savings (montoEstimado - precioFinal) per signed adjudicación, summed over the last 6 calendar months. */
-  private async ahorroMensual(companyId: string, moneda: Moneda) {
+  /** Last 6 calendar months, oldest first — shared cutoff so every rolling-window metric stays in sync. */
+  private ultimosSeisMeses() {
     const ahora = new Date();
-    const meses = Array.from({ length: 6 }, (_, i) => {
+    return Array.from({ length: 6 }, (_, i) => {
       const offset = 5 - i;
       const start = new Date(ahora.getFullYear(), ahora.getMonth() - offset, 1);
       const end = new Date(ahora.getFullYear(), ahora.getMonth() - offset + 1, 1);
       return { label: MESES_ES[start.getMonth()], start, end };
     });
+  }
+
+  /** Real savings (montoEstimado - precioFinal) per signed adjudicación, summed over the last 6 calendar months. */
+  private async ahorroMensual(companyId: string, moneda: Moneda) {
+    const meses = this.ultimosSeisMeses();
 
     const adjudicaciones = await this.prisma.adjudicacion.findMany({
       where: { firmado: true, requerimiento: { companyId, moneda }, createdAt: { gte: meses[0].start } },
@@ -51,10 +56,11 @@ export class AnaliticaService {
     }));
   }
 
-  /** Average days from requerimiento creation to signed adjudicación, per category. */
+  /** Average days from requerimiento creation to signed adjudicación, per category, over the last 6 calendar months. */
   private async tiempoCicloCategoria(companyId: string) {
+    const meses = this.ultimosSeisMeses();
     const adjudicaciones = await this.prisma.adjudicacion.findMany({
-      where: { firmado: true, requerimiento: { companyId } },
+      where: { firmado: true, requerimiento: { companyId }, createdAt: { gte: meses[0].start } },
       select: { createdAt: true, requerimiento: { select: { categoria: true, createdAt: true } } },
     });
 

@@ -11,9 +11,9 @@ import {
   EstadoCaso,
 } from '@prisma/client';
 import { createClient } from '@supabase/supabase-js';
-import { DOCUMENTOS_BASE } from '../src/homologacion/documentos-base';
+import { DOCUMENTOS_HOMOLOGACION_INICIALES } from '../src/homologacion/homologacion-documentos.const';
 
-const DOCUMENTOS_OPCIONALES = DOCUMENTOS_BASE.filter((d) => !d.obligatorio);
+const DOCUMENTOS_OPCIONALES = DOCUMENTOS_HOMOLOGACION_INICIALES.filter((d) => !d.obligatorio);
 
 const prisma = new PrismaClient();
 const DEMO_PASSWORD = 'demo123';

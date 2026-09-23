@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { PortalOnly } from '../common/decorators/portal.decorator';
@@ -11,6 +11,8 @@ import { ConfirmUploadDto } from './dto/confirm-upload.dto';
 import { RegistrarVerificacionDto } from './dto/verificacion.dto';
 import { UpdateRequisitosDto } from './dto/requisitos.dto';
 import { ValidarDocumentoDto } from './dto/validar-documento.dto';
+import { CuestionarioDto } from './dto/cuestionario.dto';
+import { SolicitarInfoDto } from './dto/solicitar-info.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('homologacion')
@@ -22,6 +24,12 @@ export class HomologacionController {
   @Get('mine')
   mine(@CurrentUser() user: AuthenticatedUser) {
     return this.service.mine(user.sub);
+  }
+
+  @PortalOnly('PROVEEDOR')
+  @Patch('cuestionario')
+  guardarCuestionario(@CurrentUser() user: AuthenticatedUser, @Body() dto: CuestionarioDto) {
+    return this.service.guardarCuestionario(user.sub, dto);
   }
 
   @PortalOnly('PROVEEDOR')
@@ -70,7 +78,18 @@ export class HomologacionController {
     @Param('proveedorId') proveedorId: string,
     @Body() dto: ResolverDto,
   ) {
-    return this.service.resolver(proveedorId, dto.estado, dto.score, user.email, dto.motivo);
+    return this.service.resolver(proveedorId, dto.estado, user.email, dto.score, dto.motivo);
+  }
+
+  @PortalOnly('INTERNO')
+  @Roles(Role.COMPLIANCE_OPS)
+  @Post(':proveedorId/solicitar-info')
+  solicitarInfo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('proveedorId') proveedorId: string,
+    @Body() dto: SolicitarInfoDto,
+  ) {
+    return this.service.solicitarInfo(proveedorId, user.email, dto.mensaje);
   }
 
   @PortalOnly('INTERNO')

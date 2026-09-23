@@ -46,18 +46,21 @@ export class DisputasController {
   }
 
   @PortalOnly('INTERNO')
+  @Roles(Role.COMPLIANCE_OPS)
   @Get('interno/todas')
   listAll() {
     return this.service.listAll();
   }
 
   @PortalOnly('INTERNO')
+  @Roles(Role.COMPLIANCE_OPS)
   @Post(':id/asignar')
   asignar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.service.asignarMediador(id, user.sub);
   }
 
   @PortalOnly('INTERNO')
+  @Roles(Role.COMPLIANCE_OPS)
   @Post(':id/resolver')
   resolver(
     @CurrentUser() user: AuthenticatedUser,

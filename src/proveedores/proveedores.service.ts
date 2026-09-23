@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EstadoDocumento, EstadoHomologacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { DOCUMENTOS_HOMOLOGACION_INICIALES } from '../homologacion/homologacion-documentos.const';
 import type { UpdatePerfilDto } from './dto/update-perfil.dto';
-import { DOCUMENTOS_BASE } from '../homologacion/documentos-base';
 
 const PALETTE = [
   'oklch(0.46 0.14 246)',
@@ -125,6 +125,8 @@ export class ProveedoresService {
         ...(dto.nombre !== undefined ? { nombre: dto.nombre } : {}),
         ...(dto.categorias !== undefined ? { categorias: dto.categorias } : {}),
         ...(dto.ubicacion !== undefined ? { ubicacion: dto.ubicacion } : {}),
+        ...(dto.sitioWeb !== undefined ? { sitioWeb: dto.sitioWeb.trim() || null } : {}),
+        ...(dto.certificaciones !== undefined ? { certificaciones: dto.certificaciones } : {}),
       },
     });
   }
@@ -140,22 +142,24 @@ export class ProveedoresService {
 
   async createExterno(nombre: string) {
     const iniciales = nombre.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
-    const proveedor = await this.prisma.proveedorProfile.create({
-      data: {
-        nombre: nombre.trim(),
-        iniciales: iniciales || 'PV',
-        categorias: ['Pendiente de homologación'],
-        ubicacion: 'Por confirmar',
-        certificaciones: [],
-        color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const proveedor = await tx.proveedorProfile.create({
+        data: {
+          nombre: nombre.trim(),
+          iniciales: iniciales || 'PV',
+          categorias: ['Pendiente de homologación'],
+          ubicacion: 'Por confirmar',
+          certificaciones: [],
+          color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
+        },
+      });
+      await tx.homologacion.create({
+        data: {
+          proveedorId: proveedor.id,
+          documentos: { create: DOCUMENTOS_HOMOLOGACION_INICIALES },
+        },
+      });
+      return proveedor;
     });
-    await this.prisma.homologacion.create({
-      data: {
-        proveedorId: proveedor.id,
-        documentos: { create: DOCUMENTOS_BASE },
-      },
-    });
-    return proveedor;
   }
 }

@@ -5,15 +5,26 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { CategoriaDocumento, EstadoDocumento, EstadoHomologacion, ResultadoLista, Role } from '@prisma/client';
+import {
+  CategoriaDocumento,
+  EstadoDocumento,
+  EstadoHomologacion,
+  NivelRiesgo,
+  Portal,
+  ResultadoLista,
+  Role,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { StorageService } from '../storage/storage.service';
-import { HomologacionScoringService } from './homologacion-scoring.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { HomologacionScoringService, NIVEL_RIESGO_INFO } from './homologacion-scoring.service';
+import { CuestionarioDto } from './dto/cuestionario.dto';
+import { camposFaltantes, HomologacionCuestionario } from './homologacion-cuestionario.types';
 
 const BUCKET = 'homologacion-documentos';
+const REEVALUACION_DEFAULT_DIAS = 365;
 
 @Injectable()
 export class HomologacionService {
@@ -35,6 +46,25 @@ export class HomologacionService {
     });
     if (!homologacion) throw new NotFoundException('Aún no has iniciado tu homologación.');
     return homologacion;
+  }
+
+  async guardarCuestionario(userId: string, dto: CuestionarioDto) {
+    const proveedorId = await this.proveedores.findIdForUser(userId);
+    const homologacion = await this.prisma.homologacion.findUnique({ where: { proveedorId } });
+    if (!homologacion) throw new NotFoundException('Aún no has iniciado tu homologación.');
+    if (homologacion.estado === EstadoHomologacion.EN_REVISION || homologacion.estado === EstadoHomologacion.ZONA_GRIS) {
+      throw new ConflictException('Tu homologación está en revisión. No puedes modificar el cuestionario hasta que Procurex resuelva.');
+    }
+
+    const actual = (homologacion.cuestionario as HomologacionCuestionario | null) ?? {};
+    // Draft save merges — a proveedor filling section 3 shouldn't wipe what they
+    // already saved in section 1, since each Paso only submits its own fields.
+    const merged: HomologacionCuestionario = { ...actual, ...dto };
+    return this.prisma.homologacion.update({
+      where: { proveedorId },
+      data: { cuestionario: merged as object },
+      include: { documentos: true },
+    });
   }
 
   async crearUrlSubida(userId: string, documentoId: string, filename: string) {
@@ -80,19 +110,19 @@ export class HomologacionService {
   }
 
   /** Proveedores can only fetch a link for their own docs; Compliance/Ops can fetch any (for review). */
-  async crearUrlDescarga(userId: string, portal: string, role: Role, documentoId: string) {
+  async crearUrlDescarga(userId: string, portal: Portal, role: Role, documentoId: string) {
     const doc = await this.prisma.documentoHomologacion.findUnique({
       where: { id: documentoId },
       include: { homologacion: true },
     });
     if (!doc || !doc.storagePath) throw new NotFoundException('Documento no encontrado.');
 
-    if (portal === 'PROVEEDOR') {
+    if (portal === Portal.PROVEEDOR) {
       const proveedorId = await this.proveedores.findIdForUser(userId);
       if (doc.homologacion.proveedorId !== proveedorId) {
         throw new ForbiddenException('Este documento no te pertenece.');
       }
-    } else if (!(portal === 'INTERNO' && role === Role.COMPLIANCE_OPS)) {
+    } else if (!(portal === Portal.INTERNO && role === Role.COMPLIANCE_OPS)) {
       throw new ForbiddenException('No tienes acceso a este documento.');
     }
 
@@ -112,19 +142,34 @@ export class HomologacionService {
     if (homologacion.estado === EstadoHomologacion.ZONA_GRIS) {
       throw new ConflictException('Tu homologación está en revisión manual por nuestro equipo de compliance.');
     }
-    const faltantes = homologacion.documentos.filter((d) => d.obligatorio && !d.storagePath);
+
+    const cuestionario = (homologacion.cuestionario as HomologacionCuestionario | null) ?? {};
+    const faltantes = camposFaltantes(cuestionario);
     if (faltantes.length > 0) {
       throw new BadRequestException(
-        `Faltan documentos obligatorios: ${faltantes.map((d) => d.nombre).join(', ')}.`,
+        `Completa el cuestionario antes de enviarlo a validación. Falta: ${faltantes.join(', ')}.`,
       );
     }
+    // Optional documents (HSE, sostenibilidad, centrales de riesgo, SARLAFT)
+    // never block sending — they add score and unlock clients that require them.
+    const sinSubir = homologacion.documentos.filter((d) => d.obligatorio && d.estado === EstadoDocumento.PENDIENTE);
+    if (sinSubir.length > 0) {
+      throw new BadRequestException(
+        `Sube todos los documentos requeridos antes de enviar. Falta: ${sinSubir.map((d) => d.nombre).join(', ')}.`,
+      );
+    }
+
     const estadoPrevio = homologacion.estado;
 
-    const { score, alertas, nitDetectado, verificaciones } = await this.scoring.evaluar(homologacion.documentos, {
-      proveedorNombre: homologacion.proveedor.nombre,
-      representanteNombre: homologacion.proveedor.user?.nombre,
-      ubicacion: homologacion.proveedor.ubicacion,
-    });
+    const { score, scoreDesglose, nivelRiesgo, alertas, nitDetectado, verificaciones } = await this.scoring.evaluar(
+      homologacion.documentos,
+      {
+        proveedorNombre: homologacion.proveedor.nombre,
+        representanteNombre: homologacion.proveedor.user?.nombre,
+        ubicacion: homologacion.proveedor.ubicacion,
+      },
+      cuestionario,
+    );
     const estado = alertas.length > 0 ? EstadoHomologacion.ZONA_GRIS : EstadoHomologacion.EN_REVISION;
 
     // Each envío is a fresh screening — the previous round's list results
@@ -136,8 +181,11 @@ export class HomologacionService {
         data: {
           estado,
           score,
+          scoreDesglose: scoreDesglose as object,
+          nivelRiesgo,
           alertas,
           nitDetectado,
+          observaciones: null,
           fechaSolicitud: new Date(),
           verificaciones: { create: verificaciones },
         },
@@ -154,7 +202,7 @@ export class HomologacionService {
           : estadoPrevio === EstadoHomologacion.RECHAZADO
             ? 'Homologación reenviada a revisión tras rechazo'
             : 'Homologación enviada a revisión',
-      detalle: `Score ${score}${alertas.length ? `, ${alertas.length} alerta(s)` : ''}`,
+      detalle: `Score ${score} (riesgo ${NIVEL_RIESGO_INFO[nivelRiesgo].label})${alertas.length ? `, ${alertas.length} alerta(s)` : ''}`,
     });
 
     return actualizado;
@@ -170,6 +218,10 @@ export class HomologacionService {
         ],
       },
       include: { documentos: true, proveedor: true, verificaciones: { orderBy: { lista: 'asc' } } },
+      orderBy: { fechaSolicitud: 'asc' },
+      // Cross-tenant queue with no natural per-caller scope to bound it by —
+      // growth guard-rail, not page size.
+      take: 200,
     });
   }
 
@@ -272,8 +324,8 @@ export class HomologacionService {
   async resolver(
     proveedorId: string,
     estado: 'APROBADO' | 'RECHAZADO',
-    score: number,
     actorNombre: string,
+    scoreOverride?: number,
     motivo?: string,
   ) {
     const homologacion = await this.prisma.homologacion.findUnique({
@@ -294,6 +346,10 @@ export class HomologacionService {
       }
     }
 
+    const score = scoreOverride ?? homologacion.score;
+    const nivelRiesgo = homologacion.nivelRiesgo ?? NivelRiesgo.MEDIO;
+    const reevaluacionDias = NIVEL_RIESGO_INFO[nivelRiesgo]?.reevaluacionDias ?? REEVALUACION_DEFAULT_DIAS;
+
     // Both writes must land together — a homologación left APROBADO with a
     // stale ProveedorProfile.score would silently corrupt the public
     // directory ranking (ordered by that same score) and offer matching.
@@ -303,7 +359,7 @@ export class HomologacionService {
         data: {
           estado: estado as EstadoHomologacion,
           score,
-          proximaRevalidacion: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365),
+          proximaRevalidacion: new Date(Date.now() + 1000 * 60 * 60 * 24 * reevaluacionDias),
         },
       }),
       ...(estado === 'APROBADO'
@@ -325,6 +381,50 @@ export class HomologacionService {
       detalle: homologacion.proveedor.nombre,
       motivo,
     });
+    if (homologacion.proveedor.userId) {
+      await this.notificaciones.create(
+        homologacion.proveedor.userId,
+        'PROVEEDOR',
+        estado === 'APROBADO' ? 'Homologación aprobada' : 'Homologación rechazada',
+        estado === 'APROBADO'
+          ? 'Tu empresa ya está homologada y disponible para ser invitada a licitaciones.'
+          : `Tu homologación fue rechazada.${motivo ? ` Motivo: ${motivo}` : ''}`,
+        '/proveedor/dashboard',
+      );
+    }
     return { ok: true };
+  }
+
+  /** Compliance pide información/documentos faltantes — devuelve la homologación a BORRADOR para que el proveedor la corrija (paso 4 del flujograma). */
+  async solicitarInfo(proveedorId: string, actorNombre: string, mensaje: string) {
+    const homologacion = await this.prisma.homologacion.findUnique({
+      where: { proveedorId },
+      include: { proveedor: true },
+    });
+    if (!homologacion) throw new NotFoundException('Homologación no encontrada.');
+    if (homologacion.estado !== EstadoHomologacion.EN_REVISION && homologacion.estado !== EstadoHomologacion.ZONA_GRIS) {
+      throw new ConflictException('Solo puedes pedir información sobre una homologación en revisión.');
+    }
+
+    const actualizado = await this.prisma.homologacion.update({
+      where: { proveedorId },
+      data: { estado: EstadoHomologacion.BORRADOR, observaciones: mensaje },
+    });
+    await this.auditLog.log({
+      usuario: actorNombre,
+      accion: 'Información adicional solicitada al proveedor',
+      detalle: homologacion.proveedor.nombre,
+      motivo: mensaje,
+    });
+    if (homologacion.proveedor.userId) {
+      await this.notificaciones.create(
+        homologacion.proveedor.userId,
+        'PROVEEDOR',
+        'Compliance solicitó información adicional',
+        mensaje,
+        '/proveedor/homologacion',
+      );
+    }
+    return actualizado;
   }
 }

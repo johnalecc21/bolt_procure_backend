@@ -6,6 +6,7 @@ import type {
   ListasRestrictivasService,
   ResultadoVerificacion,
 } from './listas-restrictivas.service';
+import type { HomologacionCuestionario } from './homologacion-cuestionario.types';
 
 function doc(partial: Partial<DocumentoHomologacion>): DocumentoHomologacion {
   return {
@@ -22,7 +23,6 @@ function doc(partial: Partial<DocumentoHomologacion>): DocumentoHomologacion {
 }
 
 function servicio(verificaciones: ResultadoVerificacion[]) {
-  const listas = { verificar: jest.fn().mockResolvedValue(verificaciones) };
   const supabase = {
     admin: {
       storage: {
@@ -36,6 +36,7 @@ function servicio(verificaciones: ResultadoVerificacion[]) {
   const ocr = {
     extractText: jest.fn().mockResolvedValue('Certificado vigente'),
   };
+  const listas = { verificar: jest.fn().mockResolvedValue(verificaciones) };
   const svc = new HomologacionScoringService(
     supabase as unknown as SupabaseService,
     ocr as unknown as OcrService,
@@ -44,36 +45,56 @@ function servicio(verificaciones: ResultadoVerificacion[]) {
   return { svc, listas };
 }
 
-const limpio = [
+const limpio: ResultadoVerificacion[] = [
   { lista: 'OFAC', resultado: ResultadoLista.SIN_COINCIDENCIA, detalle: null },
 ];
+const cuestionario: HomologacionCuestionario = {
+  razonSocial: 'Acme S.A.S.',
+  nombreComercial: 'Acme',
+  representanteLegal: 'Ana Gómez',
+  paisConstitucion: 'Colombia',
+  politicaAnticorrupcion: true,
+  politicaProteccionDatos: true,
+  politicaSst: true,
+  polizasVigentes: true,
+};
 
 describe('HomologacionScoringService', () => {
-  it('screens both the company and its representative', async () => {
+  it('screens the declared company, trade name and representative, in the declared country', async () => {
     const { svc, listas } = servicio(limpio);
-    await svc.evaluar([], {
-      proveedorNombre: 'Acme',
-      representanteNombre: 'Ana',
-      ubicacion: 'Colombia',
-    });
-    expect(listas.verificar).toHaveBeenCalledWith(['Acme', 'Ana'], 'Colombia');
-  });
-
-  it('rewards clean lists and uploaded optional documents', async () => {
-    const { svc } = servicio(limpio);
-    const res = await svc.evaluar(
-      [
-        doc({ obligatorio: false, storagePath: null }),
-        doc({ nombre: 'HSE', obligatorio: false, storagePath: 'p/hse.pdf' }),
-      ],
-      { proveedorNombre: 'Acme' },
+    await svc.evaluar(
+      [],
+      {
+        proveedorNombre: 'Perfil',
+        representanteNombre: 'Usuario',
+        ubicacion: 'Perú',
+      },
+      cuestionario,
     );
-    // 70 base + 10 clean lists + 2 for the one uploaded optional document.
-    expect(res.score).toBe(82);
-    expect(res.alertas).toEqual([]);
+    expect(listas.verificar).toHaveBeenCalledWith(
+      ['Acme S.A.S.', 'Acme', 'Ana Gómez'],
+      'Colombia',
+    );
   });
 
-  it('caps the score on a list hit and records it as an alerta', async () => {
+  it('falls back to the profile and account names without a questionnaire', async () => {
+    const { svc, listas } = servicio(limpio);
+    await svc.evaluar(
+      [],
+      {
+        proveedorNombre: 'Perfil',
+        representanteNombre: 'Usuario',
+        ubicacion: 'Perú',
+      },
+      null,
+    );
+    expect(listas.verificar).toHaveBeenCalledWith(
+      ['Perfil', '', 'Usuario'],
+      'Perú',
+    );
+  });
+
+  it('zeroes legal and compliance on a list hit and records it as an alerta', async () => {
     const { svc } = servicio([
       {
         lista: 'ONU',
@@ -81,12 +102,18 @@ describe('HomologacionScoringService', () => {
         detalle: 'Posible coincidencia ONU',
       },
     ]);
-    const res = await svc.evaluar([], { proveedorNombre: 'Acme' });
-    expect(res.score).toBe(20);
+    const res = await svc.evaluar(
+      [],
+      { proveedorNombre: 'Acme' },
+      cuestionario,
+    );
+    expect(res.scoreDesglose.legal).toBe(0);
+    expect(res.scoreDesglose.compliance).toBe(0);
     expect(res.alertas).toContain('Posible coincidencia ONU');
+    expect(res.verificaciones).toHaveLength(1);
   });
 
-  it('sends an unavailable list to manual review without the clean-list bonus', async () => {
+  it('sends an unavailable list to manual review without zeroing the score', async () => {
     const { svc } = servicio([
       {
         lista: 'OFAC',
@@ -94,8 +121,33 @@ describe('HomologacionScoringService', () => {
         detalle: 'No se pudo consultar la lista OFAC/SDN.',
       },
     ]);
-    const res = await svc.evaluar([], { proveedorNombre: 'Acme' });
-    expect(res.score).toBe(70);
-    expect(res.alertas).toHaveLength(1);
+    const res = await svc.evaluar(
+      [],
+      { proveedorNombre: 'Acme' },
+      cuestionario,
+    );
+    expect(res.alertas).toEqual(['No se pudo consultar la lista OFAC/SDN.']);
+    expect(res.scoreDesglose.compliance).toBe(100);
+  });
+
+  it('rewards uploaded optional documents in their category', async () => {
+    const sinPolizas = { ...cuestionario, polizasVigentes: false }; // compliance 90, room for the bonus
+    const { svc } = servicio(limpio);
+    const base = await svc.evaluar([], { proveedorNombre: 'Acme' }, sinPolizas);
+    const conHse = await svc.evaluar(
+      [
+        doc({
+          nombre: 'HSE',
+          categoria: 'HSE',
+          obligatorio: false,
+          storagePath: 'p/hse.pdf',
+        }),
+      ],
+      { proveedorNombre: 'Acme' },
+      sinPolizas,
+    );
+    expect(conHse.scoreDesglose.compliance).toBe(
+      base.scoreDesglose.compliance + 5,
+    );
   });
 });
