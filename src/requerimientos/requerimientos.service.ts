@@ -321,6 +321,14 @@ export class RequerimientosService {
   // after a requerimiento is out, so invitations here are sent immediately.
   async invitarProveedores(companyId: string, id: string, proveedorIds: string[]) {
     const req = await this.findOne(companyId, id);
+    // Inviting flips the requerimiento to EN_LICITACION — allowing it before
+    // approval would let anyone skip the approval matrix, and after the bid
+    // closes there's nothing left to join.
+    if (req.estado !== EstadoRequerimiento.EN_LICITACION) {
+      throw new BadRequestException(
+        'Solo puedes invitar proveedores a un requerimiento en licitación. Si está pendiente de aprobación, las invitaciones salen cuando se apruebe.',
+      );
+    }
     const existentes = await this.prisma.invitacion.findMany({
       where: { requerimientoId: id, proveedorId: { in: proveedorIds } },
       select: { proveedorId: true },
