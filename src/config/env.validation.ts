@@ -10,6 +10,8 @@ import * as Joi from 'joi';
 export const envValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
   PORT: Joi.number().default(3001),
+  // Number of reverse proxies in front of the API (1 on Render/Koyeb). 0 locally.
+  TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(0),
 
   DATABASE_URL: Joi.string().uri().required(),
 

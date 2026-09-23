@@ -19,6 +19,13 @@ async function bootstrap() {
   app.useLogger(app.get(Logger));
   const config = app.get(ConfigService);
 
+  // Behind a hosting load balancer (Render, Koyeb, Fly…) every request arrives
+  // from the proxy's IP. Trusting exactly that many hops makes req.ip the real
+  // client — otherwise the rate limiter would throttle all users together.
+  // Never `true`: that would let clients spoof X-Forwarded-For.
+  const trustProxyHops = Number(config.get('TRUST_PROXY_HOPS', 0));
+  if (trustProxyHops > 0) app.getHttpAdapter().getInstance().set('trust proxy', trustProxyHops);
+
   // CSP off: this is a JSON API plus a Swagger UI page, and a strict default
   // CSP blocks Swagger's inline scripts. The other headers (HSTS, nosniff,
   // frameguard, etc.) still apply.

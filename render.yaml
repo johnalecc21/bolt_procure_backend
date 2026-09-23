@@ -1,0 +1,39 @@
+# Blueprint de Render para el backend (plan gratis). Guía: docs/DESPLIEGUE-DEMO.md
+# En Render: New → Blueprint → elige este repositorio. Las variables marcadas
+# con `sync: false` las pide Render al crear el servicio (son secretos).
+services:
+  - type: web
+    name: procurex-api
+    runtime: node
+    plan: free
+    # Elige la región más cercana a tu proyecto de Supabase (virginia = us-east-1).
+    region: virginia
+    branch: main
+    autoDeploy: true
+    # --include=dev: el CLI de Nest es dependencia de desarrollo y hace falta para compilar.
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    # Las migraciones corren al arrancar (el pre-deploy command no está en el plan gratis).
+    startCommand: npx prisma migrate deploy && npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      # Supabase → Project Settings → Database → Connection string → "Session pooler" (puerto 5432).
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Upstash → tu base Redis → "rediss://..." (con TLS).
+      - key: REDIS_URL
+        sync: false
+      # URL del frontend en Vercel, sin "/" al final (ej. https://procurex.vercel.app).
+      - key: CORS_ORIGIN
+        sync: false
+      - key: APP_URL
+        sync: false

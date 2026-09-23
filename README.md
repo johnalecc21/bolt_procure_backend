@@ -103,6 +103,8 @@ La bitácora se exporta en CSV (`GET /audit-log/export?desde=&hasta=`, Admin/CFO
 
 Respaldos, simulacro de restauración, alertas, SLA y límites por plan: ver [`docs/OPERACION.md`](docs/OPERACION.md).
 
+Despliegue de demostración gratis (Vercel + Render + Supabase + Upstash): ver [`docs/DESPLIEGUE-DEMO.md`](docs/DESPLIEGUE-DEMO.md).
+
 ## Moneda
 
 Cada empresa tiene `pais` y `monedaBase` (COP, USD, MXN, PEN, CLP, BRL). Los requerimientos toman esa moneda (o una explícita) y la heredan contratos, POs y pagos. Los montos son enteros en unidades completas. La analítica solo agrega montos en la moneda base (no hay fuente de tasas de cambio).
