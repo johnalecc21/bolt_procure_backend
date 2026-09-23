@@ -1,4 +1,4 @@
-import { IsArray, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class UpdatePerfilDto {
   @IsOptional()
@@ -14,4 +14,15 @@ export class UpdatePerfilDto {
   @IsOptional()
   @IsString()
   ubicacion?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  sitioWeb?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(80, { each: true })
+  certificaciones?: string[];
 }

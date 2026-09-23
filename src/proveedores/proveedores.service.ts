@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EstadoHomologacion } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { DOCUMENTOS_HOMOLOGACION_INICIALES } from '../homologacion/homologacion-documentos.const';
 import type { UpdatePerfilDto } from './dto/update-perfil.dto';
 
 const PALETTE = [
@@ -78,6 +79,8 @@ export class ProveedoresService {
         ...(dto.nombre !== undefined ? { nombre: dto.nombre } : {}),
         ...(dto.categorias !== undefined ? { categorias: dto.categorias } : {}),
         ...(dto.ubicacion !== undefined ? { ubicacion: dto.ubicacion } : {}),
+        ...(dto.sitioWeb !== undefined ? { sitioWeb: dto.sitioWeb.trim() || null } : {}),
+        ...(dto.certificaciones !== undefined ? { certificaciones: dto.certificaciones } : {}),
       },
     });
   }
@@ -107,14 +110,7 @@ export class ProveedoresService {
       await tx.homologacion.create({
         data: {
           proveedorId: proveedor.id,
-          documentos: {
-            create: [
-              { nombre: 'RUT / NIT', categoria: 'LEGAL' },
-              { nombre: 'Estados financieros', categoria: 'FINANCIERO' },
-              { nombre: 'Certificado ISO / BASC / ESG', categoria: 'CERTIFICACIONES' },
-              { nombre: 'Referencias comerciales', categoria: 'REFERENCIAS' },
-            ],
-          },
+          documentos: { create: DOCUMENTOS_HOMOLOGACION_INICIALES },
         },
       });
       return proveedor;

@@ -44,6 +44,16 @@ enum EstadoHomologacion {
   ZONA_GRIS
 }
 
+/// Nivel de riesgo del modelo de homologación basado en riesgo (score ponderado
+/// por 6 categorías). Determina la cadena de aprobación requerida y la
+/// periodicidad de reevaluación — ver HomologacionScoringService.NIVEL_RIESGO_INFO.
+enum NivelRiesgo {
+  BAJO
+  MEDIO
+  ALTO
+  CRITICO
+}
+
 enum EstadoDocumento {
   PENDIENTE
   SUBIDO
@@ -367,6 +377,7 @@ model ProveedorProfile {
   categorias            String[]
   score                 Int      @default(0)
   ubicacion             String
+  sitioWeb              String?
   certificaciones       String[]
   procesosGanados       Int      @default(0)
   entregasATiempo       Int      @default(0)
@@ -396,6 +407,16 @@ model Homologacion {
   proximaRevalidacion DateTime?
   /// NIT/RUT number detected by OCR on the "RUT / NIT" document, for manual cross-check against RUES.
   nitDetectado        String?
+  /// Respuestas del Cuestionario de Homologación de Proveedores (secciones 1-6 y 8),
+  /// guardado como borrador editable hasta que se envía a validación. Shape: HomologacionCuestionario.
+  cuestionario        Json?
+  /// Desglose del score por categoría ponderada (financiero/legal/compliance/tecnico/operacional/comercial),
+  /// calculado en HomologacionScoringService.evaluar(). Shape: ScoreDesglose.
+  scoreDesglose       Json?
+  nivelRiesgo         NivelRiesgo?
+  /// Último motivo de "solicitar información" del panel de Compliance, visible al proveedor
+  /// mientras la homologación está de vuelta en BORRADOR para que la corrija.
+  observaciones       String?
 
   proveedor  ProveedorProfile        @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
   documentos DocumentoHomologacion[]

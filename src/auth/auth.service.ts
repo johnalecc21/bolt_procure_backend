@@ -3,6 +3,7 @@ import { Portal, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import { iniciales as computeIniciales } from '../common/utils/iniciales.util';
+import { DOCUMENTOS_HOMOLOGACION_INICIALES } from '../homologacion/homologacion-documentos.const';
 import { RegisterProveedorDto } from './dto/register-proveedor.dto';
 
 @Injectable()
@@ -113,14 +114,7 @@ export class AuthService {
         await tx.homologacion.create({
           data: {
             proveedorId: proveedor.id,
-            documentos: {
-              create: [
-                { nombre: 'RUT / NIT', categoria: 'LEGAL' },
-                { nombre: 'Estados financieros', categoria: 'FINANCIERO' },
-                { nombre: 'Certificado ISO / BASC / ESG', categoria: 'CERTIFICACIONES' },
-                { nombre: 'Referencias comerciales', categoria: 'REFERENCIAS' },
-              ],
-            },
+            documentos: { create: DOCUMENTOS_HOMOLOGACION_INICIALES },
           },
         });
         return user;
