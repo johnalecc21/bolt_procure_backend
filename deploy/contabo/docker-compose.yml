@@ -1,0 +1,68 @@
+# Producción en un VPS (Contabo): API + Redis + Caddy (HTTPS automático).
+# La base de datos, la autenticación y el almacenamiento siguen en Supabase.
+# Uso: ver docs/DESPLIEGUE-CONTABO.md  (desde esta carpeta: ./desplegar.sh)
+name: procurex
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: procurex-api:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      # Caddy es el único proxy delante de la API.
+      TRUST_PROXY_HOPS: "1"
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    # Sin puertos publicados: solo Caddy llega a la API por la red interna.
+    expose:
+      - "3001"
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  redis-data:
+  caddy-data:
+  caddy-config:

@@ -11,6 +11,7 @@ import { Role } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import { origenesPermitidos } from '../config/origenes';
 import {
   SubastaService,
   AuctionViewer,
@@ -46,7 +47,7 @@ const CONTROL_ROLES = new Set<Role>([Role.COMPRADOR, Role.ADMIN_CLIENTE]);
 @WebSocketGateway({
   namespace: '/subasta',
   cors: {
-    origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+    origin: origenesPermitidos(process.env.CORS_ORIGIN),
     credentials: true,
   },
 })

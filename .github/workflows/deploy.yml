@@ -1,0 +1,47 @@
+name: Desplegar en Contabo
+
+# Tras un CI verde en main (o a mano), entra por SSH al servidor y corre
+# deploy/contabo/desplegar.sh. Si los secretos no están configurados, no hace nada.
+#
+# Secretos (Settings → Secrets and variables → Actions):
+#   CONTABO_HOST     IP o dominio del servidor
+#   CONTABO_USER     usuario de despliegue (p. ej. procurex)
+#   CONTABO_SSH_KEY  llave privada SSH autorizada para ese usuario
+#   CONTABO_PATH     opcional; por defecto /opt/procurex
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-contabo
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: ¿Hay servidor configurado?
+        id: check
+        env:
+          HOST: ${{ secrets.CONTABO_HOST }}
+        run: echo "ok=$([ -n "$HOST" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Desplegar por SSH
+        if: steps.check.outputs.ok == 'true'
+        env:
+          HOST: ${{ secrets.CONTABO_HOST }}
+          USER: ${{ secrets.CONTABO_USER }}
+          KEY: ${{ secrets.CONTABO_SSH_KEY }}
+          RUTA: ${{ secrets.CONTABO_PATH }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/id_deploy "$USER@$HOST" "cd ${RUTA:-/opt/procurex}/deploy/contabo && ./desplegar.sh main"
+      - name: Sin servidor configurado
+        if: steps.check.outputs.ok != 'true'
+        run: echo "CONTABO_HOST no está definido; se omite el despliegue."

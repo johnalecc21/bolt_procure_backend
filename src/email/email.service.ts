@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ContenidoCorreo, renderCorreo } from './plantilla';
+import { urlFrontend } from '../config/origenes';
 
 const RESEND_URL = 'https://api.resend.com/emails';
 const REINTENTOS = 3;
@@ -23,11 +24,10 @@ export class EmailService {
     this.from =
       config.get<string>('EMAIL_FROM') ??
       'Procurex <notificaciones@procurex.co>';
-    this.appUrl = (
-      config.get<string>('APP_URL') ??
-      config.get<string>('CORS_ORIGIN') ??
-      'http://localhost:5173'
-    ).replace(/\/$/, '');
+    this.appUrl = urlFrontend(
+      config.get<string>('APP_URL'),
+      config.get<string>('CORS_ORIGIN'),
+    );
   }
 
   get habilitado(): boolean {

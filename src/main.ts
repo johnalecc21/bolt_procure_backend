@@ -9,6 +9,7 @@ import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
+import { origenesPermitidos } from './config/origenes';
 import { RedisIoAdapter } from './common/adapters/redis-io.adapter';
 import { REDIS_CLIENT } from './redis/redis.constants';
 
@@ -31,7 +32,7 @@ async function bootstrap() {
   // frameguard, etc.) still apply.
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(compression());
-  app.enableCors({ origin: config.get('CORS_ORIGIN', 'http://localhost:5173'), credentials: true });
+  app.enableCors({ origin: origenesPermitidos(config.get<string>('CORS_ORIGIN')), credentials: true });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: false }),
   );

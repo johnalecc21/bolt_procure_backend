@@ -6,6 +6,7 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import { iniciales } from '../common/utils/iniciales.util';
 import { CrearClienteDto } from './dto/crear-cliente.dto';
+import { urlFrontend } from '../config/origenes';
 
 @Injectable()
 export class InternoService {
@@ -63,7 +64,7 @@ export class InternoService {
       throw new ConflictException('Ya existe una cuenta con este correo.');
     }
 
-    const frontendUrl = this.config.get('CORS_ORIGIN', 'http://localhost:5173');
+    const frontendUrl = urlFrontend(this.config.get<string>('APP_URL'), this.config.get<string>('CORS_ORIGIN'));
     const { data, error } = await this.supabase.admin.auth.admin.inviteUserByEmail(dto.adminEmail.toLowerCase(), {
       redirectTo: `${frontendUrl}/set-password`,
     });

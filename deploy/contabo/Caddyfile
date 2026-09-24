@@ -1,0 +1,17 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# Certificado de Let's Encrypt automático para el dominio de la API.
+# Los WebSockets de la subasta (/socket.io) pasan por aquí sin configuración extra.
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api:3001 {
+		health_uri /health
+		health_interval 30s
+	}
+	log {
+		output stdout
+		format console
+	}
+}

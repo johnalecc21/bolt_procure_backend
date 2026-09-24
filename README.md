@@ -2,6 +2,11 @@
 
 API real (NestJS + Prisma + PostgreSQL) para la plataforma ProcureOS. Vive como proyecto hermano del frontend (`bolt_procure`), no dentro de él.
 
+## Despliegue
+
+- **Producción (Contabo + Vercel):** [`docs/DESPLIEGUE-CONTABO.md`](docs/DESPLIEGUE-CONTABO.md)
+- Demo gratis (Render + Vercel): [`docs/DESPLIEGUE-DEMO.md`](docs/DESPLIEGUE-DEMO.md)
+
 ## Stack
 
 - **NestJS 11** (TypeScript)
