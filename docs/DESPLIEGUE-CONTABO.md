@@ -105,7 +105,7 @@ Sin esos secretos el workflow no hace nada.
 ## 4. Frontend en Vercel
 
 1. Vercel → *Add New Project* → importa `bolt_pro`. Framework: **Vite** (ya
-   viene en `vercel.json`). Rama de producción: `integration` (o la que uses).
+   viene en `vercel.json`). Rama de producción: `main` (`develop` genera previsualizaciones).
 2. *Environment Variables* (Production):
 
    | Variable | Valor |

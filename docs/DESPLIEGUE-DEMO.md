@@ -55,9 +55,8 @@ funciona sin sus variables.
 
 1. vercel.com → **Add New → Project** → importa el repositorio del frontend.
 2. Framework: **Vite** (se detecta solo). Build: `npm run build`, salida `dist`.
-3. **Importante:** la rama `main` de ese repositorio está vacía; el código
-   está en `integration`. Después de importar: **Settings → Git → Production
-   Branch** = `integration`, y vuelve a desplegar.
+3. La rama de producción es `main` (Vercel la toma por defecto); `develop`
+   genera despliegues de previsualización.
 4. Variables de entorno:
    - `VITE_API_URL` = `https://<tu-servicio>.onrender.com`
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` = las del paso 1.1

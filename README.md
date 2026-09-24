@@ -2,6 +2,10 @@
 
 API real (NestJS + Prisma + PostgreSQL) para la plataforma ProcureOS. Vive como proyecto hermano del frontend (`bolt_procure`), no dentro de él.
 
+## Ramas
+
+`main` = producción (lo que despliega `desplegar.sh` y el workflow de Contabo), `develop` = integración del trabajo en curso.
+
 ## Despliegue
 
 - **Producción (Contabo + Vercel):** [`docs/DESPLIEGUE-CONTABO.md`](docs/DESPLIEGUE-CONTABO.md)
@@ -131,6 +135,6 @@ El servidor difunde el evento `state` a todos los conectados a esa sala cada vez
 
 ## Notas
 
-- El frontend (`bolt_procure`, rama `integration`) ya está conectado a esta API vía `src/lib/api/*.ts` (auth, requerimientos, ofertas, adjudicación, contratos, homologación, subasta en vivo, etc.). Los stores mock correspondientes fueron eliminados del frontend.
+- El frontend (`bolt_pro`, ramas `main`/`develop`) ya está conectado a esta API vía `src/lib/api/*.ts` (auth, requerimientos, ofertas, adjudicación, contratos, homologación, subasta en vivo, etc.). Los stores mock correspondientes fueron eliminados del frontend.
 - El log de auditoría, notificaciones y homologación usan datos reales persistidos en Postgres.
 - Pantallas sin modelo de datos propio (Analítica CFO, Auditoría de Ahorro, Asistente de Redacción RFP, Onboarding ERP) siguen simuladas en el frontend a propósito — conectarlas requeriría diseñar nuevas entidades, no solo cablear lo existente.
