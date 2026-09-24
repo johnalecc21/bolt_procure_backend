@@ -1,4 +1,4 @@
-import { Inject, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -9,11 +9,13 @@ import {
 } from '@nestjs/websockets';
 import { Role } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
-import type { Redis } from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseService } from '../supabase/supabase.service';
-import { REDIS_CLIENT } from '../redis/redis.constants';
-import { SubastaService, PujaSeed, AuctionViewer } from './subasta.service';
+import {
+  SubastaService,
+  AuctionViewer,
+  IniciarOpciones,
+} from './subasta.service';
 
 interface SocketUser extends AuctionViewer {
   sub: string;
@@ -23,10 +25,8 @@ interface SocketUser extends AuctionViewer {
 interface JoinPayload {
   requerimientoId: string;
 }
-interface IniciarPayload {
+interface IniciarPayload extends IniciarOpciones {
   requerimientoId: string;
-  durationMs: number;
-  seed: PujaSeed[];
 }
 interface PujarPayload {
   requerimientoId: string;
@@ -43,23 +43,26 @@ const CONTROL_ROLES = new Set<Role>([Role.COMPRADOR, Role.ADMIN_CLIENTE]);
 // REST CORS does — read the same env var directly instead (actual auth is
 // enforced by the verified Supabase token in the handshake regardless, this
 // is defense in depth to match the REST origin restriction).
-@WebSocketGateway({ namespace: '/subasta', cors: { origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173', credentials: true } })
+@WebSocketGateway({
+  namespace: '/subasta',
+  cors: {
+    origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+    credentials: true,
+  },
+})
 export class SubastaGateway implements OnGatewayInit {
   @WebSocketServer() server: Server;
 
   private logger = new Logger(SubastaGateway.name);
-  private intervals = new Map<string, ReturnType<typeof setInterval>>();
-  private readonly TICK_MS = 5000;
-  // Shorter than TICK_MS so a lock from an instance that died mid-round
-  // expires before the next tick would need it, instead of stalling the
-  // auction until the lock's TTL catches up.
-  private readonly TICK_LOCK_TTL_MS = 4500;
+  // One close timer per round on the instance that started it. If that
+  // instance goes away, SubastaService.getState() closes the round on the next
+  // read instead — the deadline is enforced by the database either way.
+  private closeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private subasta: SubastaService,
     private supabase: SupabaseService,
     private prisma: PrismaService,
-    @Inject(REDIS_CLIENT) private redis: Redis,
   ) {}
 
   // Auth as a Socket.IO middleware (not the OnGatewayConnection lifecycle
@@ -90,7 +93,9 @@ export class SubastaGateway implements OnGatewayInit {
     const { data, error } = await this.supabase.anon.auth.getUser(token);
     if (error || !data.user) throw new Error('invalid token');
 
-    const profile = await this.prisma.user.findUnique({ where: { id: data.user.id } });
+    const profile = await this.prisma.user.findUnique({
+      where: { id: data.user.id },
+    });
     if (!profile || !profile.activo) throw new Error('inactive user');
 
     let companyId: string | undefined;
@@ -115,7 +120,10 @@ export class SubastaGateway implements OnGatewayInit {
   }
 
   @SubscribeMessage('join')
-  async onJoin(@ConnectedSocket() client: Socket, @MessageBody() body: JoinPayload) {
+  async onJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: JoinPayload,
+  ) {
     const user: SocketUser = client.data.user;
     const allowed = await this.subasta.canView(body.requerimientoId, user);
     if (!allowed) {
@@ -128,23 +136,49 @@ export class SubastaGateway implements OnGatewayInit {
   }
 
   @SubscribeMessage('iniciar')
-  async onIniciar(@ConnectedSocket() client: Socket, @MessageBody() body: IniciarPayload) {
+  async onIniciar(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: IniciarPayload,
+  ) {
     const user: SocketUser = client.data.user;
-    if (!CONTROL_ROLES.has(user.role) || !(await this.subasta.canControl(body.requerimientoId, user))) {
-      client.emit('error', { message: 'No tienes permiso para iniciar esta subasta.' });
+    if (
+      !CONTROL_ROLES.has(user.role) ||
+      !(await this.subasta.canControl(body.requerimientoId, user))
+    ) {
+      client.emit('error', {
+        message: 'No tienes permiso para iniciar esta subasta.',
+      });
       return;
     }
-    const state = await this.subasta.iniciar(body.requerimientoId, body.durationMs, body.seed);
-    await this.broadcastState(body.requerimientoId, state);
-    this.scheduleTicks(body.requerimientoId, body.durationMs);
+    try {
+      const state = await this.subasta.iniciar(body.requerimientoId, {
+        duracionMin: Number(body.duracionMin),
+        participantes: body.participantes === 'todos' ? 'todos' : 'finalistas',
+      });
+      await this.broadcastState(body.requerimientoId, state);
+      if (state.deadline)
+        this.scheduleClose(
+          body.requerimientoId,
+          state.deadline.getTime() - Date.now(),
+        );
+    } catch (err) {
+      client.emit('error', { message: (err as Error).message });
+    }
   }
 
   @SubscribeMessage('pujar')
-  async onPujar(@ConnectedSocket() client: Socket, @MessageBody() body: PujarPayload) {
+  async onPujar(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: PujarPayload,
+  ) {
     const user: SocketUser = client.data.user;
     if (user.portal !== 'PROVEEDOR' || !user.proveedorId) return;
     try {
-      const state = await this.subasta.pujar(body.requerimientoId, user.proveedorId, body.monto);
+      const state = await this.subasta.pujar(
+        body.requerimientoId,
+        user.proveedorId,
+        body.monto,
+      );
       await this.broadcastState(body.requerimientoId, state);
     } catch (err) {
       client.emit('error', { message: (err as Error).message });
@@ -152,46 +186,52 @@ export class SubastaGateway implements OnGatewayInit {
   }
 
   @SubscribeMessage('cerrar')
-  async onCerrar(@ConnectedSocket() client: Socket, @MessageBody() body: CerrarPayload) {
+  async onCerrar(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: CerrarPayload,
+  ) {
     const user: SocketUser = client.data.user;
-    if (!CONTROL_ROLES.has(user.role) || !(await this.subasta.canControl(body.requerimientoId, user))) {
-      client.emit('error', { message: 'No tienes permiso para cerrar esta subasta.' });
+    if (
+      !CONTROL_ROLES.has(user.role) ||
+      !(await this.subasta.canControl(body.requerimientoId, user))
+    ) {
+      client.emit('error', {
+        message: 'No tienes permiso para cerrar esta subasta.',
+      });
       return;
     }
     const state = await this.subasta.cerrar(body.requerimientoId);
     await this.broadcastState(body.requerimientoId, state);
-    this.clearTicks(body.requerimientoId);
+    this.clearCloseTimer(body.requerimientoId);
   }
 
-  private scheduleTicks(requerimientoId: string, durationMs: number) {
-    this.clearTicks(requerimientoId);
-    const interval = setInterval(async () => {
-      // Every instance that thinks it's driving this auction runs this same
-      // interval (a reconnect can land 'iniciar' on a different instance
-      // than the one already ticking) — a per-round lock means only one of
-      // them actually nudges the price and broadcasts each round, instead of
-      // two instances independently decrementing it.
-      const lockKey = `subasta:tick-lock:${requerimientoId}`;
-      const acquired = await this.redis.set(lockKey, '1', 'PX', this.TICK_LOCK_TTL_MS, 'NX');
-      if (!acquired) return;
-
-      const state = await this.subasta.nudge(requerimientoId);
-      if (!state) {
-        this.clearTicks(requerimientoId);
-        return;
-      }
-      await this.broadcastState(requerimientoId, state);
-    }, this.TICK_MS);
-    this.intervals.set(requerimientoId, interval);
-
-    setTimeout(() => this.clearTicks(requerimientoId), durationMs + 1000);
+  private scheduleClose(requerimientoId: string, delayMs: number) {
+    this.clearCloseTimer(requerimientoId);
+    const timer = setTimeout(
+      () => {
+        this.closeTimers.delete(requerimientoId);
+        void (async () => {
+          if (!(await this.subasta.cerrarSiVencida(requerimientoId))) return;
+          await this.broadcastState(
+            requerimientoId,
+            await this.subasta.getState(requerimientoId),
+          );
+        })().catch((err: Error) =>
+          this.logger.error(
+            `No se pudo cerrar la subasta ${requerimientoId}: ${err.message}`,
+          ),
+        );
+      },
+      Math.max(0, delayMs) + 250,
+    );
+    this.closeTimers.set(requerimientoId, timer);
   }
 
-  private clearTicks(requerimientoId: string) {
-    const interval = this.intervals.get(requerimientoId);
-    if (interval) {
-      clearInterval(interval);
-      this.intervals.delete(requerimientoId);
+  private clearCloseTimer(requerimientoId: string) {
+    const timer = this.closeTimers.get(requerimientoId);
+    if (timer) {
+      clearTimeout(timer);
+      this.closeTimers.delete(requerimientoId);
     }
   }
 
@@ -199,7 +239,10 @@ export class SubastaGateway implements OnGatewayInit {
   // sockets get the real leaderboard, proveedor sockets get only their own
   // puja plus rank, computed server-side so the raw rival data never
   // reaches a proveedor's browser in the first place.
-  private async broadcastState(requerimientoId: string, state: Awaited<ReturnType<SubastaService['getState']>>) {
+  private async broadcastState(
+    requerimientoId: string,
+    state: Awaited<ReturnType<SubastaService['getState']>>,
+  ) {
     const sockets = await this.server.in(requerimientoId).fetchSockets();
     for (const socket of sockets) {
       const user = socket.data.user as SocketUser | undefined;

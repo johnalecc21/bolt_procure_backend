@@ -10,9 +10,19 @@ export class SubastaController {
   constructor(private service: SubastaService) {}
 
   @Get(':requerimientoId')
-  async getState(@CurrentUser() user: AuthenticatedUser, @Param('requerimientoId') requerimientoId: string) {
-    const proveedorId = user.portal === 'PROVEEDOR' ? await this.service.proveedorIdForUser(user.sub) : undefined;
-    const viewer = { portal: user.portal, companyId: user.companyId, proveedorId };
+  async getState(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('requerimientoId') requerimientoId: string,
+  ) {
+    const proveedorId =
+      user.portal === 'PROVEEDOR'
+        ? await this.service.proveedorIdForUser(user.sub)
+        : undefined;
+    const viewer = {
+      portal: user.portal,
+      companyId: user.companyId,
+      proveedorId,
+    };
     const allowed = await this.service.canView(requerimientoId, viewer);
     if (!allowed) {
       throw new ForbiddenException('No tienes acceso a esta subasta.');
