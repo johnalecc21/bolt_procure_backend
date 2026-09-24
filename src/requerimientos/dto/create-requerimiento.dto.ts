@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { Moneda } from '@prisma/client';
+import { Moneda, PrioridadRequerimiento } from '@prisma/client';
 import {
   IsArray,
   IsEnum,
@@ -49,6 +49,10 @@ export class CreateRequerimientoDto {
 
   @IsISO8601()
   fechaLimite: string;
+
+  @IsEnum(PrioridadRequerimiento)
+  @IsOptional()
+  prioridad?: PrioridadRequerimiento;
 
   @IsObject()
   @IsOptional()

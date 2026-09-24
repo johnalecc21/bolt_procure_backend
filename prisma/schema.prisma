@@ -157,6 +157,12 @@ enum EstadoPago {
   VENCIDO
 }
 
+enum PrioridadRequerimiento {
+  NORMAL
+  ALTA
+  URGENTE
+}
+
 enum TipoNotificacion {
   APROBACION
   OFERTA
@@ -294,28 +300,29 @@ model CompanyMembership {
 // ---------------------------------------------------------------------------
 
 model Requerimiento {
-  id                   String              @id @default(cuid())
+  id                   String                 @id @default(cuid())
   // Human-readable sequential code (REQ-0001, REQ-0002, ...) shown in the UI
   // instead of the cuid — Postgres autoincrement keeps it atomic and unique
   // without any app-level counter logic.
-  numero               Int                 @unique @default(autoincrement())
+  numero               Int                    @unique @default(autoincrement())
   companyId            String
   titulo               String
   descripcion          String?
   categoria            String
-  estado               EstadoRequerimiento @default(BORRADOR)
+  estado               EstadoRequerimiento    @default(BORRADOR)
+  prioridad            PrioridadRequerimiento @default(NORMAL)
   montoEstimado        Int
-  moneda               Moneda              @default(USD)
+  moneda               Moneda                 @default(USD)
   centroCostoId        String?
   fechaLimite          DateTime
-  progreso             Int                 @default(0)
-  proveedoresInvitados Int                 @default(0)
-  ofertasRecibidas     Int                 @default(0)
+  progreso             Int                    @default(0)
+  proveedoresInvitados Int                    @default(0)
+  ofertasRecibidas     Int                    @default(0)
   solicitanteId        String
   criteriosPeso        Json?
   especificaciones     Json?
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   company     Company      @relation(fields: [companyId], references: [id])
   solicitante User         @relation("Solicitante", fields: [solicitanteId], references: [id])

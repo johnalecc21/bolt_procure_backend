@@ -23,3 +23,21 @@ export function formatMonto(
   // Several currencies share the bare "$" symbol — the code disambiguates.
   return moneda === Moneda.BRL ? formatted : `${formatted} ${moneda}`;
 }
+
+/**
+ * Award amount above which the contract needs a legal review before signing.
+ * Roughly USD 50k in each currency — a single flat number meant almost every
+ * COP or CLP purchase needed legal review, and almost no USD one did.
+ */
+export const UMBRAL_REVISION_LEGAL: Record<Moneda, number> = {
+  USD: 50_000,
+  COP: 200_000_000,
+  MXN: 1_000_000,
+  PEN: 190_000,
+  CLP: 47_000_000,
+  BRL: 280_000,
+};
+
+export function requiereRevisionLegal(monto: number, moneda: Moneda): boolean {
+  return monto > UMBRAL_REVISION_LEGAL[moneda];
+}

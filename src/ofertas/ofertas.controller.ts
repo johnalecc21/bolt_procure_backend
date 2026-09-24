@@ -13,7 +13,10 @@ export class OfertasController {
 
   @PortalOnly('CLIENTE')
   @Get('requerimiento/:id')
-  listByRequerimiento(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  listByRequerimiento(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
     return this.service.listByRequerimiento(user.companyId, id);
   }
 
@@ -31,7 +34,10 @@ export class OfertasController {
 
   @PortalOnly('PROVEEDOR')
   @Get('mine/:requerimientoId')
-  mine(@CurrentUser() user: AuthenticatedUser, @Param('requerimientoId') requerimientoId: string) {
+  mine(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('requerimientoId') requerimientoId: string,
+  ) {
     return this.service.mine(user.sub, requerimientoId);
   }
 
@@ -43,7 +49,10 @@ export class OfertasController {
 
   @PortalOnly('PROVEEDOR')
   @Post(':requerimientoId/enviar')
-  enviar(@CurrentUser() user: AuthenticatedUser, @Param('requerimientoId') requerimientoId: string) {
+  enviar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('requerimientoId') requerimientoId: string,
+  ) {
     return this.service.enviar(user.sub, requerimientoId);
   }
 }

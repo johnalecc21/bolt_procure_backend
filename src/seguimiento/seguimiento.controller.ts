@@ -1,4 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { PortalOnly } from '../common/decorators/portal.decorator';
@@ -40,7 +48,10 @@ export class SeguimientoController {
   }
 
   @Delete('hitos/:id')
-  eliminarHito(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  eliminarHito(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
     return this.service.eliminarHito(user.companyId, id);
   }
 }

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { PortalOnly } from '../common/decorators/portal.decorator';
@@ -7,6 +15,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequerimientosService } from './requerimientos.service';
 import { CreateRequerimientoDto } from './dto/create-requerimiento.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
+import { ReenviarRequerimientoDto } from './dto/reenviar-requerimiento.dto';
 import { UpdateEstadoDto } from './dto/update-estado.dto';
 import { InviteProveedoresDto } from './dto/invite-proveedores.dto';
 import { ExtenderPlazoDto } from './dto/extender-plazo.dto';
@@ -27,7 +36,10 @@ export class RequerimientosController {
   }
 
   @Get('pagina')
-  listPaginada(@CurrentUser() user: AuthenticatedUser, @Query() dto: ListarRequerimientosDto) {
+  listPaginada(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() dto: ListarRequerimientosDto,
+  ) {
     return this.service.listPaginada(user.companyId, user.sub, user.role, {
       page: dto.page ?? 1,
       limit: dto.limit ?? 20,
@@ -44,7 +56,10 @@ export class RequerimientosController {
 
   @Roles(Role.COMPRADOR, Role.ADMIN_CLIENTE)
   @Post()
-  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateRequerimientoDto) {
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateRequerimientoDto,
+  ) {
     return this.service.create(user.companyId, user.sub, dto);
   }
 
@@ -55,7 +70,12 @@ export class RequerimientosController {
     @Param('id') id: string,
     @Body() dto: UpdateEstadoDto,
   ) {
-    return this.service.updateEstado(user.companyId, id, dto.estado, user.email);
+    return this.service.updateEstado(
+      user.companyId,
+      id,
+      dto.estado,
+      user.email,
+    );
   }
 
   @Roles(Role.COMPRADOR, Role.ADMIN_CLIENTE)
@@ -65,7 +85,32 @@ export class RequerimientosController {
     @Param('id') id: string,
     @Body() dto: ExtenderPlazoDto,
   ) {
-    return this.service.extenderPlazo(user.companyId, id, dto.dias, user.email, dto.motivo);
+    return this.service.extenderPlazo(
+      user.companyId,
+      id,
+      dto.dias,
+      user.email,
+      dto.motivo,
+    );
+  }
+
+  @Roles(Role.COMPRADOR, Role.ADMIN_CLIENTE)
+  @Post(':id/cerrar-licitacion')
+  cerrarLicitacion(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.service.cerrarLicitacion(user.companyId, id, user.email);
+  }
+
+  @Roles(Role.COMPRADOR, Role.ADMIN_CLIENTE)
+  @Post(':id/reenviar')
+  reenviar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ReenviarRequerimientoDto,
+  ) {
+    return this.service.reenviar(user.companyId, id, user.sub, user.email, dto);
   }
 
   @Post(':id/comentarios')
@@ -84,7 +129,11 @@ export class RequerimientosController {
     @Param('id') id: string,
     @Body() dto: InviteProveedoresDto,
   ) {
-    return this.service.invitarProveedores(user.companyId, id, dto.proveedorIds);
+    return this.service.invitarProveedores(
+      user.companyId,
+      id,
+      dto.proveedorIds,
+    );
   }
 
   @Post(':id/documentos/upload-url')
@@ -93,7 +142,12 @@ export class RequerimientosController {
     @Param('id') id: string,
     @Body() dto: UploadUrlDto,
   ) {
-    return this.service.crearUrlSubidaDocumento(user.companyId, id, dto.filename, dto.tamanoBytes);
+    return this.service.crearUrlSubidaDocumento(
+      user.companyId,
+      id,
+      dto.filename,
+      dto.tamanoBytes,
+    );
   }
 
   @Post(':id/documentos/:docId/confirmar')
@@ -103,7 +157,14 @@ export class RequerimientosController {
     @Param('docId') docId: string,
     @Body() dto: ConfirmarDocumentoDto,
   ) {
-    return this.service.confirmarDocumento(user.companyId, id, docId, dto.path, user.email, dto.tamanoBytes);
+    return this.service.confirmarDocumento(
+      user.companyId,
+      id,
+      docId,
+      dto.path,
+      user.email,
+      dto.tamanoBytes,
+    );
   }
 
   @Get(':id/documentos/:docId/url')

@@ -22,7 +22,13 @@ export class AprobacionesController {
 
   @Post(':id/aprobar')
   aprobar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.service.aprobar(user.companyId, id, user.sub, user.role, user.email);
+    return this.service.aprobar(
+      user.companyId,
+      id,
+      user.sub,
+      user.role,
+      user.email,
+    );
   }
 
   @Post(':id/rechazar')
@@ -31,6 +37,13 @@ export class AprobacionesController {
     @Param('id') id: string,
     @Body() dto: RejectDto,
   ) {
-    return this.service.rechazar(user.companyId, id, user.sub, user.role, user.email, dto.motivo);
+    return this.service.rechazar(
+      user.companyId,
+      id,
+      user.sub,
+      user.role,
+      user.email,
+      dto.motivo,
+    );
   }
 }

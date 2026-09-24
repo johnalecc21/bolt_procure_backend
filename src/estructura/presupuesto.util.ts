@@ -5,6 +5,8 @@ export const ESTADOS_EN_PROCESO: EstadoRequerimiento[] = [
   EstadoRequerimiento.PENDIENTE_APROBACION,
   EstadoRequerimiento.EN_LICITACION,
   EstadoRequerimiento.EN_NEGOCIACION,
+  // Awarded but not signed yet: the contract (and its commitment) doesn't exist until firmar().
+  EstadoRequerimiento.ADJUDICADO,
 ];
 
 export interface Ejecucion {

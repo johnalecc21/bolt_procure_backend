@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoSubasta } from '@prisma/client';
+import { EstadoRequerimiento, EstadoSubasta } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 
@@ -148,6 +148,27 @@ export class SubastaService {
         'Ya hay una ronda en curso para este proceso.',
       );
     }
+    const requerimiento = await this.prisma.requerimiento.findUnique({
+      where: { id: requerimientoId },
+      select: {
+        estado: true,
+        fechaLimite: true,
+        adjudicacion: { select: { id: true } },
+      },
+    });
+    const estadosPermitidos: EstadoRequerimiento[] = [
+      EstadoRequerimiento.EN_LICITACION,
+      EstadoRequerimiento.EN_NEGOCIACION,
+    ];
+    if (
+      !requerimiento ||
+      !estadosPermitidos.includes(requerimiento.estado) ||
+      requerimiento.adjudicacion
+    ) {
+      throw new BadRequestException(
+        'Solo se puede negociar un proceso en licitación que aún no esté adjudicado.',
+      );
+    }
 
     const ofertas = await this.prisma.oferta.findMany({
       where: { requerimientoId, enviada: true },
@@ -166,7 +187,22 @@ export class SubastaService {
     }
 
     const deadline = new Date(Date.now() + opciones.duracionMin * 60_000);
+    const ahora = new Date();
     await this.prisma.$transaction(async (tx) => {
+      // Negotiating ends the open tender: no new offers from here on.
+      await tx.requerimiento.update({
+        where: { id: requerimientoId },
+        data: {
+          estado: EstadoRequerimiento.EN_NEGOCIACION,
+          ...(requerimiento.fechaLimite > ahora ? { fechaLimite: ahora } : {}),
+        },
+      });
+      if (requerimiento.fechaLimite > ahora) {
+        await tx.invitacion.updateMany({
+          where: { requerimientoId },
+          data: { fechaLimite: ahora },
+        });
+      }
       const session = await tx.auctionSession.upsert({
         where: { requerimientoId },
         create: { requerimientoId, status: EstadoSubasta.ACTIVA, deadline },

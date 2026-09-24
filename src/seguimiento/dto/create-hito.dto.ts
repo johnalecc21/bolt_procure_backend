@@ -1,4 +1,12 @@
-import { IsDateString, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+import {
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateHitoDto {
   @IsString()

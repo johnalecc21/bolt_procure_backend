@@ -21,6 +21,15 @@ function build() {
       upsert: jest.fn().mockResolvedValue({ id: 's1' }),
     },
     oferta: { findMany: jest.fn() },
+    requerimiento: {
+      findUnique: jest.fn().mockResolvedValue({
+        estado: 'EN_LICITACION',
+        fechaLimite: new Date(Date.now() + 86_400_000),
+        adjudicacion: null,
+      }),
+      update: jest.fn(),
+    },
+    invitacion: { updateMany: jest.fn() },
     $transaction: jest.fn(),
   };
   prisma.$transaction.mockImplementation((fn: (tx: typeof prisma) => unknown) =>
@@ -160,5 +169,35 @@ describe('SubastaService.getState', () => {
       },
       data: { status: EstadoSubasta.CERRADA },
     });
+  });
+});
+
+describe('SubastaService.iniciar — estado del proceso', () => {
+  it('pasa el requerimiento a negociación y cierra la licitación abierta', async () => {
+    const { svc, prisma } = build();
+    prisma.auctionSession.findUnique.mockResolvedValue(null);
+    prisma.oferta.findMany.mockResolvedValue([
+      { proveedorId: 'p1', precioTotal: 100, proveedor: { nombre: 'Uno' } },
+      { proveedorId: 'p2', precioTotal: 120, proveedor: { nombre: 'Dos' } },
+    ]);
+    await svc.iniciar('r1', { duracionMin: 30, participantes: 'todos' });
+    expect(prisma.requerimiento.update).toHaveBeenCalledWith({
+      where: { id: 'r1' },
+      data: { estado: 'EN_NEGOCIACION', fechaLimite: expect.any(Date) },
+    });
+    expect(prisma.invitacion.updateMany).toHaveBeenCalled();
+  });
+
+  it('no negocia procesos ya adjudicados', async () => {
+    const { svc, prisma } = build();
+    prisma.auctionSession.findUnique.mockResolvedValue(null);
+    prisma.requerimiento.findUnique.mockResolvedValue({
+      estado: 'ADJUDICADO',
+      fechaLimite: new Date(),
+      adjudicacion: { id: 'a' },
+    });
+    await expect(
+      svc.iniciar('r1', { duracionMin: 30, participantes: 'todos' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

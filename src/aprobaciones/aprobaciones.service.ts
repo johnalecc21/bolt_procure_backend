@@ -1,5 +1,15 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { EstadoAprobacion, EstadoRequerimiento, Role, TipoAprobacion, TipoRegla } from '@prisma/client';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  EstadoAprobacion,
+  EstadoRequerimiento,
+  Role,
+  TipoAprobacion,
+  TipoRegla,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
@@ -17,7 +27,10 @@ export class AprobacionesService {
   // Sends the shortlist staged at creation time (Invitacion rows with
   // enviada:false) once the requerimiento clears approval — this is the
   // moment providers actually find out they were invited.
-  private async enviarInvitacionesPendientes(requerimientoId: string, tituloRequerimiento: string) {
+  private async enviarInvitacionesPendientes(
+    requerimientoId: string,
+    tituloRequerimiento: string,
+  ) {
     const pendientes = await this.prisma.invitacion.findMany({
       where: { requerimientoId, enviada: false },
       include: { proveedor: { include: { user: true } } },
@@ -54,7 +67,11 @@ export class AprobacionesService {
   // ANY of the required roles approves; SECUENCIAL requires each required
   // role to approve in order, so only the role at the current step qualifies.
   private esElegible(
-    aprobacion: { tipoRegla: TipoRegla; rolesRequeridos: Role[]; pasoActual: number },
+    aprobacion: {
+      tipoRegla: TipoRegla;
+      rolesRequeridos: Role[];
+      pasoActual: number;
+    },
     role: Role,
   ) {
     if (aprobacion.tipoRegla === TipoRegla.SECUENCIAL) {
@@ -65,9 +82,18 @@ export class AprobacionesService {
 
   async list(companyId: string, role: Role) {
     const items = await this.prisma.aprobacion.findMany({
-      where: { estado: EstadoAprobacion.PENDIENTE, requerimiento: { companyId } },
+      where: {
+        estado: EstadoAprobacion.PENDIENTE,
+        requerimiento: { companyId },
+      },
       include: {
-        requerimiento: { select: { titulo: true, moneda: true, solicitante: { select: { nombre: true } } } },
+        requerimiento: {
+          select: {
+            titulo: true,
+            moneda: true,
+            solicitante: { select: { nombre: true } },
+          },
+        },
       },
       orderBy: [{ urgente: 'desc' }, { createdAt: 'asc' }],
     });
@@ -83,13 +109,21 @@ export class AprobacionesService {
     return aprobacion;
   }
 
-  async aprobar(companyId: string, id: string, resueltoPorId: string, resueltoPorRole: Role, actorNombre: string) {
+  async aprobar(
+    companyId: string,
+    id: string,
+    resueltoPorId: string,
+    resueltoPorRole: Role,
+    actorNombre: string,
+  ) {
     const aprobacion = await this.find(companyId, id);
     if (aprobacion.estado !== EstadoAprobacion.PENDIENTE) {
       throw new ForbiddenException('Esta aprobación ya fue resuelta.');
     }
     if (!this.esElegible(aprobacion, resueltoPorRole)) {
-      throw new ForbiddenException('Tu rol no está autorizado para aprobar esta solicitud según la Matriz de Aprobación.');
+      throw new ForbiddenException(
+        'Tu rol no está autorizado para aprobar esta solicitud según la Matriz de Aprobación.',
+      );
     }
 
     const esUltimoPaso =
@@ -99,11 +133,19 @@ export class AprobacionesService {
     if (esUltimoPaso) {
       await this.prisma.$transaction([
         this.prisma.aprobacionPaso.create({
-          data: { aprobacionId: id, rol: resueltoPorRole, aprobadoPorId: resueltoPorId },
+          data: {
+            aprobacionId: id,
+            rol: resueltoPorRole,
+            aprobadoPorId: resueltoPorId,
+          },
         }),
         this.prisma.aprobacion.update({
           where: { id },
-          data: { estado: EstadoAprobacion.APROBADA, resueltoPorId, resueltoAt: new Date() },
+          data: {
+            estado: EstadoAprobacion.APROBADA,
+            resueltoPorId,
+            resueltoAt: new Date(),
+          },
         }),
         this.prisma.requerimiento.update({
           where: { id: aprobacion.requerimientoId },
@@ -118,12 +160,19 @@ export class AprobacionesService {
         detalle: aprobacion.requerimiento.titulo,
       });
       if (aprobacion.tipo === TipoAprobacion.SALIDA_LICITACION) {
-        await this.enviarInvitacionesPendientes(aprobacion.requerimientoId, aprobacion.requerimiento.titulo);
+        await this.enviarInvitacionesPendientes(
+          aprobacion.requerimientoId,
+          aprobacion.requerimiento.titulo,
+        );
       }
     } else {
       await this.prisma.$transaction([
         this.prisma.aprobacionPaso.create({
-          data: { aprobacionId: id, rol: resueltoPorRole, aprobadoPorId: resueltoPorId },
+          data: {
+            aprobacionId: id,
+            rol: resueltoPorRole,
+            aprobadoPorId: resueltoPorId,
+          },
         }),
         this.prisma.aprobacion.update({
           where: { id },
@@ -164,17 +213,34 @@ export class AprobacionesService {
       throw new ForbiddenException('Esta aprobación ya fue resuelta.');
     }
     if (!this.esElegible(aprobacion, resueltoPorRole)) {
-      throw new ForbiddenException('Tu rol no está autorizado para rechazar esta solicitud según la Matriz de Aprobación.');
+      throw new ForbiddenException(
+        'Tu rol no está autorizado para rechazar esta solicitud según la Matriz de Aprobación.',
+      );
     }
-    await this.prisma.aprobacion.update({
-      where: { id },
-      data: {
-        estado: EstadoAprobacion.RECHAZADA,
-        resueltoPorId,
-        resueltoAt: new Date(),
-        motivoRechazo: motivo,
-      },
-    });
+    // Back to BORRADOR: it no longer counts against the cost center's budget
+    // and the solicitante can correct it and resend it (RequerimientosService.reenviar).
+    await this.prisma.$transaction([
+      this.prisma.aprobacion.update({
+        where: { id },
+        data: {
+          estado: EstadoAprobacion.RECHAZADA,
+          resueltoPorId,
+          resueltoAt: new Date(),
+          motivoRechazo: motivo,
+        },
+      }),
+      this.prisma.requerimiento.update({
+        where: { id: aprobacion.requerimientoId },
+        data: { estado: EstadoRequerimiento.BORRADOR },
+      }),
+    ]);
+    await this.notificaciones.create(
+      aprobacion.requerimiento.solicitanteId,
+      'APROBACION',
+      'Requerimiento devuelto',
+      `"${aprobacion.requerimiento.titulo}" fue rechazado: ${motivo}. Corrígelo y reenvíalo desde el detalle.`,
+      `/cliente/requerimientos/${aprobacion.requerimientoId}`,
+    );
     await this.auditLog.log({
       companyId,
       usuarioId: resueltoPorId,

@@ -1,25 +1,10 @@
-import { IsInt, IsString, Min } from 'class-validator';
+import { IsString } from 'class-validator';
 
+/** Price and terms are taken server-side from the offer (or the final negotiated bid). */
 export class CreateAdjudicacionDto {
   @IsString()
   requerimientoId: string;
 
   @IsString()
   proveedorId: string;
-
-  @IsInt()
-  @Min(0)
-  precioFinal: number;
-
-  @IsInt()
-  @Min(1)
-  plazoDias: number;
-
-  @IsInt()
-  @Min(0)
-  condicionesPagoDias: number;
-
-  @IsInt()
-  @Min(0)
-  garantiaMeses: number;
 }

@@ -16,26 +16,42 @@ export class AdjudicacionController {
   constructor(private service: AdjudicacionService) {}
 
   @Get(':requerimientoId')
-  findOne(@CurrentUser() user: AuthenticatedUser, @Param('requerimientoId') requerimientoId: string) {
+  findOne(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('requerimientoId') requerimientoId: string,
+  ) {
     return this.service.findByRequerimiento(user.companyId, requerimientoId);
   }
 
   @Roles(Role.COMPRADOR, Role.ADMIN_CLIENTE)
   @Post()
-  create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateAdjudicacionDto) {
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateAdjudicacionDto,
+  ) {
     return this.service.create(user.companyId, dto);
   }
 
   @Roles(Role.COMPRADOR, Role.ADMIN_CLIENTE, Role.APROBADOR_CFO)
   @Post(':requerimientoId/confirmar')
-  confirmar(@CurrentUser() user: AuthenticatedUser, @Param('requerimientoId') requerimientoId: string) {
+  confirmar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('requerimientoId') requerimientoId: string,
+  ) {
     return this.service.confirmar(user.companyId, requerimientoId, user.email);
   }
 
   @Roles(Role.COMPRADOR, Role.ADMIN_CLIENTE, Role.APROBADOR_CFO)
   @Post(':requerimientoId/revision-legal')
-  revisionLegal(@CurrentUser() user: AuthenticatedUser, @Param('requerimientoId') requerimientoId: string) {
-    return this.service.revisionLegal(user.companyId, requerimientoId, user.email);
+  revisionLegal(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('requerimientoId') requerimientoId: string,
+  ) {
+    return this.service.revisionLegal(
+      user.companyId,
+      requerimientoId,
+      user.email,
+    );
   }
 
   @Roles(Role.COMPRADOR, Role.ADMIN_CLIENTE, Role.APROBADOR_CFO)
@@ -45,6 +61,11 @@ export class AdjudicacionController {
     @Param('requerimientoId') requerimientoId: string,
     @Body() dto: FirmarAdjudicacionDto,
   ) {
-    return this.service.firmar(user.companyId, requerimientoId, user.email, dto.notificarPerdedores);
+    return this.service.firmar(
+      user.companyId,
+      requerimientoId,
+      user.email,
+      dto.notificarPerdedores,
+    );
   }
 }
