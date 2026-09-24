@@ -108,9 +108,9 @@ describe('AnaliticaService.cfo', () => {
   it('pide la ejecución de presupuesto de cada año del período', async () => {
     const { svc, estructura } = build();
     const r = await svc.cfo('c', { desde: '2025-11-01', hasta: '2026-02-28' });
-    expect((estructura.ejecucion.mock.calls as [string, number][]).map((c) => c[1])).toEqual([
-      2025, 2026,
-    ]);
+    expect(
+      (estructura.ejecucion.mock.calls as [string, number][]).map((c) => c[1]),
+    ).toEqual([2025, 2026]);
     expect(r.presupuestos).toHaveLength(2);
   });
 

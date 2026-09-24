@@ -219,6 +219,9 @@ model Company {
   umbralContratoMarco              Int                  @default(50000)
   // ISO-3166 alpha-2 — drives which tax id / restrictive lists apply.
   pais                             String               @default("CO")
+  /// When on, suppliers who lost a process see their price rank and their gap
+  /// to the awarded price (never the winner's name or other bids).
+  feedbackCompetitivo              Boolean              @default(false)
   // Default currency for new requerimientos; analytics aggregate only in it.
   monedaBase                       Moneda               @default(USD)
   // Document categories a proveedor must have VALIDADO (and not expired) to

@@ -20,25 +20,34 @@ export class MatrizAprobacionService {
   }
 
   private validate(reglas: ReglaDto[]) {
-    if (reglas.length === 0) throw new BadRequestException('Debe existir al menos una regla.');
+    if (reglas.length === 0)
+      throw new BadRequestException('Debe existir al menos una regla.');
     const sorted = [...reglas].sort((a, b) => a.montoMin - b.montoMin);
     if (sorted[0].montoMin !== 0) {
-      throw new BadRequestException("El primer rango debe empezar en $0.");
+      throw new BadRequestException('El primer rango debe empezar en $0.');
     }
     if (sorted[sorted.length - 1].montoMax != null) {
-      throw new BadRequestException("Debe existir una regla sin máximo que cubra cualquier monto.");
+      throw new BadRequestException(
+        'Debe existir una regla sin máximo que cubra cualquier monto.',
+      );
     }
     for (let i = 0; i < sorted.length - 1; i++) {
       const cur = sorted[i];
       const next = sorted[i + 1];
       if (cur.montoMax == null) {
-        throw new BadRequestException(`La regla que empieza en ${cur.montoMin} no puede tener máximo abierto si no es la última.`);
+        throw new BadRequestException(
+          `La regla que empieza en ${cur.montoMin} no puede tener máximo abierto si no es la última.`,
+        );
       }
       if (cur.montoMax + 1 < next.montoMin) {
-        throw new BadRequestException(`Hay un hueco entre ${cur.montoMax} y ${next.montoMin}.`);
+        throw new BadRequestException(
+          `Hay un hueco entre ${cur.montoMax} y ${next.montoMin}.`,
+        );
       }
       if (cur.montoMax >= next.montoMin) {
-        throw new BadRequestException(`Los rangos que empiezan en ${cur.montoMin} y ${next.montoMin} se solapan.`);
+        throw new BadRequestException(
+          `Los rangos que empiezan en ${cur.montoMin} y ${next.montoMin} se solapan.`,
+        );
       }
     }
   }
@@ -63,11 +72,20 @@ export class MatrizAprobacionService {
   async getConfig(companyId: string) {
     return this.prisma.company.findUniqueOrThrow({
       where: { id: companyId },
-      select: { umbralContratoMarco: true, monedaBase: true, pais: true },
+      select: {
+        umbralContratoMarco: true,
+        monedaBase: true,
+        pais: true,
+        feedbackCompetitivo: true,
+      },
     });
   }
 
-  async updateConfig(companyId: string, dto: UpdateConfigDto, actorNombre: string) {
+  async updateConfig(
+    companyId: string,
+    dto: UpdateConfigDto,
+    actorNombre: string,
+  ) {
     const { umbralContratoMarco } = dto;
     const company = await this.prisma.company.update({
       where: { id: companyId },
@@ -75,13 +93,16 @@ export class MatrizAprobacionService {
         umbralContratoMarco,
         ...(dto.monedaBase ? { monedaBase: dto.monedaBase } : {}),
         ...(dto.pais ? { pais: dto.pais.toUpperCase() } : {}),
+        ...(dto.feedbackCompetitivo !== undefined
+          ? { feedbackCompetitivo: dto.feedbackCompetitivo }
+          : {}),
       },
     });
     await this.auditLog.log({
       companyId,
       usuario: actorNombre,
-      accion: 'Umbral de Contrato Marco actualizado',
-      detalle: `Nuevo umbral: ${formatMonto(umbralContratoMarco, company.monedaBase)} · país ${company.pais}`,
+      accion: 'Configuración de la empresa actualizada',
+      detalle: `Umbral contrato marco ${formatMonto(umbralContratoMarco, company.monedaBase)} · país ${company.pais} · feedback competitivo a proveedores ${company.feedbackCompetitivo ? 'activado' : 'desactivado'}`,
     });
     return this.getConfig(companyId);
   }

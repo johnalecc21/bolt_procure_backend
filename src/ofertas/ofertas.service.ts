@@ -14,6 +14,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { UpsertOfertaDto } from './dto/upsert-oferta.dto';
+import { calcularCompetencia } from '../analitica/competencia.util';
 
 @Injectable()
 export class OfertasService {
@@ -218,7 +219,19 @@ export class OfertasService {
     const misOfertas = await this.prisma.oferta.findMany({
       where: { proveedorId, enviada: true },
       include: {
-        requerimiento: { include: { company: true, adjudicacion: true } },
+        requerimiento: {
+          include: {
+            company: true,
+            adjudicacion: true,
+            ofertas: {
+              where: { enviada: true },
+              select: { proveedorId: true, precioTotal: true },
+            },
+            auctionSession: {
+              select: { pujas: { select: { proveedorId: true, monto: true } } },
+            },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -231,8 +244,25 @@ export class OfertasService {
       if (adj?.firmado) {
         resultado = adj.proveedorId === proveedorId ? 'ganado' : 'perdido';
         if (resultado === 'perdido') {
-          feedback =
-            'El proceso fue adjudicado a otro proveedor con mejor relación precio-calidad.';
+          // Specific feedback only when the buyer opted in; the winner's name
+          // and other bids are never disclosed either way.
+          const c = o.requerimiento.company.feedbackCompetitivo
+            ? calcularCompetencia(
+                o.requerimiento.ofertas.map((x) => ({
+                  proveedorId: x.proveedorId,
+                  precio: x.precioTotal,
+                })),
+                (o.requerimiento.auctionSession?.pujas ?? []).map((p) => ({
+                  proveedorId: p.proveedorId,
+                  precio: p.monto,
+                })),
+                proveedorId,
+                adj.precioFinal,
+              )
+            : null;
+          feedback = c
+            ? `Quedaste ${c.posicion}° de ${c.participantes} por precio; tu precio final estuvo ${(c.brechaPct * 100).toLocaleString('es-CO', { maximumFractionDigits: 1 })}% ${c.brechaPct >= 0 ? 'por encima' : 'por debajo'} del adjudicado. La decisión también pondera plazo, calidad y condiciones de pago.`
+            : 'El proceso fue adjudicado a otro proveedor con mejor relación precio-calidad.';
         }
       } else if (adj?.confirmada && adj.proveedorId === proveedorId) {
         // Chosen, but the contract/PO hasn't been signed yet — a real interim

@@ -1,4 +1,12 @@
-import { IsEnum, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Length,
+  Min,
+} from 'class-validator';
 import { Moneda } from '@prisma/client';
 
 export class UpdateConfigDto {
@@ -15,4 +23,9 @@ export class UpdateConfigDto {
   @IsString()
   @Length(2, 2)
   pais?: string;
+
+  /** Show losing suppliers their price rank and gap to the awarded price. */
+  @IsOptional()
+  @IsBoolean()
+  feedbackCompetitivo?: boolean;
 }

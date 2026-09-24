@@ -1,5 +1,13 @@
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, IsEnum, IsInt, IsOptional, Min, ValidateNested } from 'class-validator';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { Role, TipoRegla } from '@prisma/client';
 
 export class ReglaDto {

@@ -22,7 +22,10 @@ export class MatrizAprobacionController {
   }
 
   @Put()
-  replace(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertReglasDto) {
+  replace(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpsertReglasDto,
+  ) {
     return this.service.replace(user.companyId, dto.reglas, user.email);
   }
 
@@ -33,7 +36,10 @@ export class MatrizAprobacionController {
   }
 
   @Put('config')
-  updateConfig(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateConfigDto) {
+  updateConfig(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateConfigDto,
+  ) {
     return this.service.updateConfig(user.companyId, dto, user.email);
   }
 }
