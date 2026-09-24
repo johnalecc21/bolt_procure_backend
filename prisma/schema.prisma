@@ -231,17 +231,18 @@ model Company {
   // Default 10 years — Colombian commercial books (Código de Comercio art. 60).
   retencionAuditoriaMeses          Int                  @default(120)
 
-  memberships     CompanyMembership[]
-  requerimientos  Requerimiento[]
-  contratos       Contrato[]
-  disputas        Disputa[]
-  matrizReglas    MatrizAprobacionRegla[]
-  casosConsultor  CasoConsultor[]
-  invitaciones    Invitacion[]
-  auditLogs       AuditLogEntry[]
-  evaluaciones    EvaluacionDesempeno[]
-  unidadesNegocio UnidadNegocio[]
-  centrosCosto    CentroCosto[]
+  memberships       CompanyMembership[]
+  requerimientos    Requerimiento[]
+  contratos         Contrato[]
+  disputas          Disputa[]
+  matrizReglas      MatrizAprobacionRegla[]
+  casosConsultor    CasoConsultor[]
+  invitaciones      Invitacion[]
+  auditLogs         AuditLogEntry[]
+  evaluaciones      EvaluacionDesempeno[]
+  unidadesNegocio   UnidadNegocio[]
+  centrosCosto      CentroCosto[]
+  graficasGuardadas GraficaGuardada[]
 
   @@map("companies")
 }
@@ -277,6 +278,7 @@ model User {
   mensajesDisputa           MensajeDisputa[]
   preguntasRespondidas      Pregunta[]            @relation("PreguntaRespondidoPor")
   evaluacionesRealizadas    EvaluacionDesempeno[]
+  graficasGuardadas         GraficaGuardada[]
 
   @@map("users")
 }
@@ -1006,4 +1008,23 @@ model PresupuestoCentroCosto {
 
   @@unique([centroCostoId, anio])
   @@map("presupuestos_centro_costo")
+}
+
+/// A chart a CFO/admin built in Analítica (metric × dimension × chart type),
+/// kept per user so it follows them across devices.
+model GraficaGuardada {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String
+  titulo    String
+  metrica   String
+  dimension String
+  tipo      String
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, companyId])
+  @@map("graficas_guardadas")
 }
