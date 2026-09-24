@@ -27,6 +27,7 @@ import {
   esElegible,
 } from '../homologacion/requisitos.util';
 import { formatMonto } from '../common/utils/moneda.util';
+import { finDelDia } from '../common/utils/fecha.util';
 
 import { PlanesService } from '../planes/planes.service';
 import { EstructuraService } from '../estructura/estructura.service';
@@ -278,8 +279,12 @@ export class RequerimientosService {
 
     const company = await this.prisma.company.findUniqueOrThrow({
       where: { id: companyId },
-      select: { monedaBase: true },
+      select: { monedaBase: true, pais: true },
     });
+    const fechaLimite = finDelDia(dto.fechaLimite, company.pais);
+    if (fechaLimite <= new Date()) {
+      throw new BadRequestException('La fecha límite de la licitación debe ser futura.');
+    }
     const moneda = dto.moneda ?? company.monedaBase;
     // Over the cost center's remaining budget → it still goes to approval,
     // but as a budget exception that finance (CFO) must sign off on.
@@ -307,7 +312,7 @@ export class RequerimientosService {
           montoEstimado: dto.montoEstimado,
           moneda,
           centroCostoId,
-          fechaLimite: new Date(dto.fechaLimite),
+          fechaLimite,
           criteriosPeso: dto.criteriosPeso,
           especificaciones:
             dto.especificaciones as unknown as Prisma.InputJsonValue,
@@ -335,7 +340,7 @@ export class RequerimientosService {
             proveedorId: p.id,
             requerimientoId: requerimiento.id,
             categoria: dto.categoria,
-            fechaLimite: new Date(dto.fechaLimite),
+            fechaLimite,
             enviada: false,
           })),
         });
@@ -480,8 +485,12 @@ export class RequerimientosService {
         'Solo se puede reenviar un requerimiento devuelto a borrador.',
       );
     }
+    const { pais } = await this.prisma.company.findUniqueOrThrow({
+      where: { id: companyId },
+      select: { pais: true },
+    });
     const fechaLimite = dto.fechaLimite
-      ? new Date(dto.fechaLimite)
+      ? finDelDia(dto.fechaLimite, pais)
       : req.fechaLimite;
     if (fechaLimite <= new Date()) {
       throw new BadRequestException(

@@ -60,6 +60,7 @@ funciona sin sus variables.
 4. Variables de entorno:
    - `VITE_API_URL` = `https://<tu-servicio>.onrender.com`
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` = las del paso 1.1
+   - `VITE_MOSTRAR_CREDENCIALES_DEMO` = `true` si quieres que los logins muestren los usuarios demo (solo para demos; en un despliegue real déjalo sin definir)
      (nunca la `service_role` en el frontend).
 5. Despliega y copia la URL `https://<nombre>.vercel.app`.
 

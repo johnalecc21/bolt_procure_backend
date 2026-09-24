@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, BadRequestException } from '@nestjs/common';
+import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto';
+import {
+  ConflictException,
+  Injectable,
+  BadRequestException,
+} from '@nestjs/common';
 import { Portal, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -23,8 +28,26 @@ export class AuthService {
     cargo: string | null;
     terminosAceptadosEn: Date | null;
   }) {
-    const { id, nombre, email, portal, role, iniciales, cargo, terminosAceptadosEn } = user;
-    return { id, nombre, email, portal, role, iniciales, cargo, terminosAceptadosEn };
+    const {
+      id,
+      nombre,
+      email,
+      portal,
+      role,
+      iniciales,
+      cargo,
+      terminosAceptadosEn,
+    } = user;
+    return {
+      id,
+      nombre,
+      email,
+      portal,
+      role,
+      iniciales,
+      cargo,
+      terminosAceptadosEn,
+    };
   }
 
   private async companiesForUser(userId: string) {
@@ -46,10 +69,16 @@ export class AuthService {
    * load our app-specific profile: portal, role, and company memberships.
    */
   async me(userId: string, companyId: string) {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    await this.prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } });
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { lastLoginAt: new Date() },
+    });
     const companies = await this.companiesForUser(userId);
-    const activeCompany = companies.find((c) => c.id === companyId) ?? companies[0];
+    const activeCompany =
+      companies.find((c) => c.id === companyId) ?? companies[0];
     return { user: this.userPublic(user), activeCompany, companies };
   }
 
@@ -62,7 +91,9 @@ export class AuthService {
   }
 
   async registerProveedor(dto: RegisterProveedorDto) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email.toLowerCase() } });
+    const existing = await this.prisma.user.findUnique({
+      where: { email: dto.email.toLowerCase() },
+    });
     if (existing) {
       throw new ConflictException('Ya existe una cuenta con este correo.');
     }
@@ -76,7 +107,9 @@ export class AuthService {
       email_confirm: true,
     });
     if (error || !data.user) {
-      throw new ConflictException(error?.message ?? 'No se pudo crear la cuenta.');
+      throw new ConflictException(
+        error?.message ?? 'No se pudo crear la cuenta.',
+      );
     }
 
     const iniciales = computeIniciales(dto.razonSocial, 'PV');
@@ -89,10 +122,12 @@ export class AuthService {
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-        const company = await tx.company.create({ data: { nombre: dto.razonSocial.trim() } });
+        const company = await tx.company.create({
+          data: { nombre: dto.razonSocial.trim() },
+        });
         const user = await tx.user.create({
           data: {
-            id: data.user!.id,
+            id: data.user.id,
             nombre: dto.razonSocial.trim(),
             email: dto.email.toLowerCase(),
             portal: Portal.PROVEEDOR,
@@ -104,7 +139,9 @@ export class AuthService {
             terminosAceptadosEn: new Date(),
           },
         });
-        await tx.companyMembership.create({ data: { userId: user.id, companyId: company.id } });
+        await tx.companyMembership.create({
+          data: { userId: user.id, companyId: company.id },
+        });
         const proveedor = await tx.proveedorProfile.create({
           data: {
             userId: user.id,
@@ -128,8 +165,23 @@ export class AuthService {
       return { id: result.id, email: result.email };
     } catch (err) {
       // Roll back the Supabase auth user if the Prisma profile transaction failed.
-      await this.supabase.admin.auth.admin.deleteUser(data.user.id).catch(() => undefined);
+      await this.supabase.admin.auth.admin
+        .deleteUser(data.user.id)
+        .catch(() => undefined);
       throw err;
     }
+  }
+
+  async actualizarPerfil(userId: string, dto: ActualizarPerfilDto) {
+    const nombre = dto.nombre?.trim();
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(nombre ? { nombre, iniciales: computeIniciales(nombre) } : {}),
+        ...(dto.cargo !== undefined ? { cargo: dto.cargo.trim() || null } : {}),
+      },
+      select: { id: true, nombre: true, iniciales: true, cargo: true },
+    });
+    return user;
   }
 }
