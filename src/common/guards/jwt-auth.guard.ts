@@ -1,10 +1,35 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { SupabaseService } from '../../supabase/supabase.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedUser } from '../../auth/types';
+import { TtlCache } from '../utils/ttl-cache';
+
+interface CachedIdentity {
+  userId: string;
+  email: string;
+  portal: AuthenticatedUser['portal'];
+  role: AuthenticatedUser['role'];
+  companyIds: string[];
+}
+
+/**
+ * How long a verified token's identity is reused. Every API call used to pay a
+ * round trip to Supabase Auth plus two DB queries before doing any work; the
+ * SPA fires several calls per screen, so this was most of the perceived
+ * latency. The trade-off: deactivating a user, changing their role or a
+ * logout elsewhere takes up to this long to be enforced on an already-issued
+ * token.
+ */
+const IDENTITY_TTL_MS = 30_000;
 
 /**
  * Replaces the old passport-jwt strategy: instead of locally verifying a
@@ -21,6 +46,8 @@ export class JwtAuthGuard implements CanActivate {
     private prisma: PrismaService,
   ) {}
 
+  private readonly identities = new TtlCache<CachedIdentity>();
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
@@ -35,26 +62,23 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Falta el token de autenticación.');
     }
 
-    const { data, error } = await this.supabase.anon.auth.getUser(token);
-    if (error || !data.user) {
+    const identity = await this.resolveIdentity(token);
+    if (!identity) {
       if (isPublic) return true;
       throw new UnauthorizedException('Sesión inválida o expirada.');
     }
-
-    const profile = await this.prisma.user.findUnique({ where: { id: data.user.id } });
-    if (!profile || !profile.activo) {
-      if (isPublic) return true;
-      throw new UnauthorizedException('Usuario no encontrado o inactivo.');
+    if (identity.companyIds.length === 0) {
+      throw new UnauthorizedException(
+        'El usuario no tiene una empresa activa.',
+      );
     }
 
-    const companyId = await this.resolveCompanyId(request, profile.id);
-
     (request as Request & { user: AuthenticatedUser }).user = {
-      sub: profile.id,
-      email: profile.email,
-      portal: profile.portal,
-      role: profile.role,
-      companyId,
+      sub: identity.userId,
+      email: identity.email,
+      portal: identity.portal,
+      role: identity.role,
+      companyId: this.pickCompany(request, identity.companyIds),
     };
 
     return true;
@@ -66,19 +90,58 @@ export class JwtAuthGuard implements CanActivate {
     return header.slice(7);
   }
 
-  private async resolveCompanyId(request: Request, userId: string): Promise<string> {
-    const memberships = await this.prisma.companyMembership.findMany({
-      where: { userId, activo: true },
-      select: { companyId: true },
-    });
-    if (memberships.length === 0) {
-      throw new UnauthorizedException('El usuario no tiene una empresa activa.');
+  /** null = token rejected by Supabase, or no active profile behind it. */
+  private async resolveIdentity(token: string): Promise<CachedIdentity | null> {
+    const key = createHash('sha256').update(token).digest('base64url');
+    const cached = this.identities.get(key);
+    if (cached) return cached;
+
+    const { data, error } = await this.supabase.anon.auth.getUser(token);
+    if (error || !data.user) return null;
+
+    const [profile, memberships] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: data.user.id } }),
+      this.prisma.companyMembership.findMany({
+        where: { userId: data.user.id, activo: true },
+        select: { companyId: true },
+      }),
+    ]);
+    if (!profile || !profile.activo) return null;
+
+    const identity: CachedIdentity = {
+      userId: profile.id,
+      email: profile.email,
+      portal: profile.portal,
+      role: profile.role,
+      companyIds: memberships.map((m) => m.companyId),
+    };
+    // Never cache past the token's own expiry.
+    const expiresAtMs = this.tokenExpiryMs(token);
+    const ttl = Math.min(
+      IDENTITY_TTL_MS,
+      expiresAtMs ? expiresAtMs - Date.now() : IDENTITY_TTL_MS,
+    );
+    this.identities.set(key, identity, ttl);
+    return identity;
+  }
+
+  private tokenExpiryMs(token: string): number | null {
+    try {
+      const payload = JSON.parse(
+        Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'),
+      ) as { exp?: number };
+      return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+    } catch {
+      return null;
     }
+  }
+
+  /** `x-company-id` lets a multi-company user choose; only real memberships are honored. */
+  private pickCompany(request: Request, companyIds: string[]): string {
     const requested = request.headers['x-company-id'];
     const requestedId = Array.isArray(requested) ? requested[0] : requested;
-    if (requestedId && memberships.some((m) => m.companyId === requestedId)) {
-      return requestedId;
-    }
-    return memberships[0].companyId;
+    return requestedId && companyIds.includes(requestedId)
+      ? requestedId
+      : companyIds[0];
   }
 }

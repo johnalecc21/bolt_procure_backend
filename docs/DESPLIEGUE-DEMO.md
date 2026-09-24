@@ -24,6 +24,9 @@ funciona sin sus variables.
    (puerto **5432**) → copia la URI y reemplaza `[YOUR-PASSWORD]`.
    No uses la conexión directa: es solo IPv6 y Render no la alcanza. Tampoco
    el *Transaction pooler* (6543): Prisma Migrate no funciona con él.
+   Agrega al final de la URI `?connection_limit=5&pool_timeout=20`: el
+   pooler de sesión del plan gratis admite pocas conexiones y Prisma, por
+   defecto, abre una por núcleo × 2 + 1; así el backend no las agota.
 3. **Storage**: si es un proyecto nuevo, crea como **privados** los buckets
    `homologacion-documentos`, `contratos-documentos` y
    `requerimientos-documentos` (el de `vitrina-proveedores` lo crea el backend).

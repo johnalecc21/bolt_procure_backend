@@ -331,7 +331,7 @@ model Requerimiento {
   contratos      Contrato[]
   preguntas      Pregunta[]
 
-  @@index([companyId])
+  @@index([companyId, createdAt])
   @@index([centroCostoId])
   @@index([solicitanteId])
   @@map("requerimientos")
@@ -346,6 +346,7 @@ model ComentarioRequerimiento {
 
   requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
 
+  @@index([requerimientoId])
   @@map("comentarios_requerimiento")
 }
 
@@ -362,6 +363,7 @@ model DocumentoRequerimiento {
 
   requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
 
+  @@index([requerimientoId])
   @@map("documentos_requerimiento")
 }
 
@@ -384,6 +386,7 @@ model Aprobacion {
   resueltoPor   User?            @relation("ResueltoPor", fields: [resueltoPorId], references: [id])
   pasos         AprobacionPaso[]
 
+  @@index([requerimientoId])
   @@map("aprobaciones")
 }
 
@@ -400,6 +403,7 @@ model AprobacionPaso {
   aprobacion  Aprobacion @relation(fields: [aprobacionId], references: [id], onDelete: Cascade)
   aprobadoPor User       @relation(fields: [aprobadoPorId], references: [id])
 
+  @@index([aprobacionId])
   @@map("aprobacion_pasos")
 }
 
@@ -413,6 +417,7 @@ model MatrizAprobacionRegla {
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
+  @@index([companyId])
   @@map("matriz_aprobacion_reglas")
 }
 
@@ -505,6 +510,7 @@ model DocumentoHomologacion {
 
   homologacion Homologacion @relation(fields: [homologacionId], references: [id], onDelete: Cascade)
 
+  @@index([homologacionId])
   @@map("documentos_homologacion")
 }
 
@@ -606,6 +612,7 @@ model Contrato {
 
   @@index([companyId])
   @@index([estado])
+  @@index([requerimientoId])
   @@map("contratos")
 }
 
@@ -625,6 +632,7 @@ model HitoSeguimiento {
   contrato     Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
   pagoGenerado PagoPO?  @relation(fields: [pagoGeneradoId], references: [id])
 
+  @@index([contratoId])
   @@map("hitos_seguimiento")
 }
 
@@ -663,6 +671,7 @@ model MensajeDisputa {
   disputa   Disputa @relation(fields: [disputaId], references: [id], onDelete: Cascade)
   autorUser User?   @relation(fields: [autorId], references: [id])
 
+  @@index([disputaId])
   @@map("mensajes_disputa")
 }
 
@@ -731,6 +740,7 @@ model PagoPO {
   hitoOrigen HitoSeguimiento?
 
   @@index([proveedorId])
+  @@index([contratoId])
   @@map("pagos_po")
 }
 
@@ -754,6 +764,7 @@ model Notificacion {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, leida])
+  @@index([userId, createdAt])
   @@map("notificaciones")
 }
 
@@ -774,7 +785,7 @@ model AuditLogEntry {
   usuarioUser User?    @relation(fields: [usuarioId], references: [id])
   company     Company? @relation(fields: [companyId], references: [id])
 
-  @@index([companyId])
+  @@index([companyId, createdAt])
   @@map("audit_log")
 }
 
