@@ -8,5 +8,6 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
   imports: [AuditLogModule, NotificacionesModule],
   controllers: [SeguimientoController],
   providers: [SeguimientoService],
+  exports: [SeguimientoService],
 })
 export class SeguimientoModule {}

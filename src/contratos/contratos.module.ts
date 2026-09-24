@@ -3,9 +3,16 @@ import { ContratosService } from './contratos.service';
 import { ContratosController } from './contratos.controller';
 import { AuditLogModule } from '../audit-log/audit-log.module';
 import { ProveedoresModule } from '../proveedores/proveedores.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
+import { SeguimientoModule } from '../seguimiento/seguimiento.module';
 
 @Module({
-  imports: [AuditLogModule, ProveedoresModule],
+  imports: [
+    AuditLogModule,
+    ProveedoresModule,
+    NotificacionesModule,
+    SeguimientoModule,
+  ],
   controllers: [ContratosController],
   providers: [ContratosService],
 })

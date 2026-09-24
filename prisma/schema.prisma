@@ -105,6 +105,14 @@ enum EstadoContrato {
   POR_VENCER
   VENCIDO
   EN_RENOVACION
+  // Ended early by the buyer (see ModificacionContrato TERMINACION).
+  TERMINADO
+}
+
+enum TipoModificacion {
+  PRORROGA
+  MONTO
+  TERMINACION
 }
 
 enum TipoAprobacion {
@@ -689,17 +697,21 @@ model Contrato {
   recordatorio60Enviado Boolean        @default(false)
   recordatorio30Enviado Boolean        @default(false)
   recordatorio15Enviado Boolean        @default(false)
+  terminadoAt           DateTime?
+  motivoTerminacion     String?
 
-  company       Company               @relation(fields: [companyId], references: [id])
-  requerimiento Requerimiento?        @relation(fields: [requerimientoId], references: [id])
-  hitos         HitoSeguimiento[]
-  pagos         PagoPO[]
-  padre         Contrato?             @relation("ContratoPadreHijas", fields: [contratoPadreId], references: [id])
-  hijas         Contrato[]            @relation("ContratoPadreHijas")
-  evaluaciones  EvaluacionDesempeno[]
-  centroCosto   CentroCosto?          @relation(fields: [centroCostoId], references: [id])
-  proveedor     ProveedorProfile?     @relation(fields: [proveedorId], references: [id])
-  adjudicacion  Adjudicacion?
+  company        Company                    @relation(fields: [companyId], references: [id])
+  requerimiento  Requerimiento?             @relation(fields: [requerimientoId], references: [id])
+  hitos          HitoSeguimiento[]
+  pagos          PagoPO[]
+  padre          Contrato?                  @relation("ContratoPadreHijas", fields: [contratoPadreId], references: [id])
+  hijas          Contrato[]                 @relation("ContratoPadreHijas")
+  evaluaciones   EvaluacionDesempeno[]
+  centroCosto    CentroCosto?               @relation(fields: [centroCostoId], references: [id])
+  proveedor      ProveedorProfile?          @relation(fields: [proveedorId], references: [id])
+  adjudicacion   Adjudicacion?
+  modificaciones ModificacionContrato[]
+  versiones      VersionDocumentoContrato[]
 
   @@index([companyId])
   @@index([estado])
@@ -709,23 +721,63 @@ model Contrato {
 }
 
 model HitoSeguimiento {
-  id             String     @id @default(cuid())
-  contratoId     String
-  label          String
-  comprometido   DateTime
-  real           DateTime?
-  estado         EstadoHito @default(PENDIENTE)
-  orden          Int        @default(0)
+  id                String     @id @default(cuid())
+  contratoId        String
+  label             String
+  comprometido      DateTime
+  real              DateTime?
+  estado            EstadoHito @default(PENDIENTE)
+  orden             Int        @default(0)
   // % of the contrato's monto released when this hito is marked COMPLETADO —
   // moving it to COMPLETADO generates a real PagoPO for that amount.
-  porcentaje     Int        @default(0)
-  pagoGeneradoId String?    @unique
+  porcentaje        Int        @default(0)
+  pagoGeneradoId    String?    @unique
+  // What the proveedor reported about this milestone (delivered, progress…);
+  // the buyer still decides when it's COMPLETADO.
+  avanceProveedor   String?
+  avanceReportadoAt DateTime?
 
   contrato     Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
   pagoGenerado PagoPO?  @relation(fields: [pagoGeneradoId], references: [id])
 
   @@index([contratoId])
   @@map("hitos_seguimiento")
+}
+
+/// Every change to a signed contract's terms, kept as its history (the
+/// "otrosí"): extensions, amount changes and early termination.
+model ModificacionContrato {
+  id              String           @id @default(cuid())
+  contratoId      String
+  tipo            TipoModificacion
+  motivo          String
+  vigenciaAntes   DateTime?
+  vigenciaDespues DateTime?
+  montoAntes      Int?
+  montoDespues    Int?
+  usuario         String
+  createdAt       DateTime         @default(now())
+
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  @@index([contratoId])
+  @@map("modificaciones_contrato")
+}
+
+/// Each file the company attached to a contract; the newest is the current one.
+model VersionDocumentoContrato {
+  id          String   @id @default(cuid())
+  contratoId  String
+  nombre      String
+  storagePath String
+  tamanoBytes Int?
+  subidoPor   String
+  createdAt   DateTime @default(now())
+
+  contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  @@index([contratoId, createdAt])
+  @@map("versiones_documento_contrato")
 }
 
 // ---------------------------------------------------------------------------

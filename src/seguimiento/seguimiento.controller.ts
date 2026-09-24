@@ -52,6 +52,6 @@ export class SeguimientoController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
   ) {
-    return this.service.eliminarHito(user.companyId, id);
+    return this.service.eliminarHito(user.companyId, id, user.email);
   }
 }

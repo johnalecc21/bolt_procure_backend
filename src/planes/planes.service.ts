@@ -106,13 +106,12 @@ export class PlanesService {
         where: { requerimiento: { companyId }, storagePath: { not: null } },
         _sum: { tamanoBytes: true },
       }),
-      this.prisma.contrato.aggregate({
-        where: { companyId, archivoStoragePath: { not: null } },
-        _sum: { archivoTamanoBytes: true },
+      // Every version of a contract's document is kept, so all of them count.
+      this.prisma.versionDocumentoContrato.aggregate({
+        where: { contrato: { companyId } },
+        _sum: { tamanoBytes: true },
       }),
     ]);
-    return (
-      (docs._sum.tamanoBytes ?? 0) + (contratos._sum.archivoTamanoBytes ?? 0)
-    );
+    return (docs._sum.tamanoBytes ?? 0) + (contratos._sum.tamanoBytes ?? 0);
   }
 }

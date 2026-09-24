@@ -432,7 +432,9 @@ export class AdjudicacionService {
       });
       // Default 30/40/30 payment split — the client can adjust each hito's
       // porcentaje afterward from Seguimiento, before marking it completado.
-      await tx.hitoSeguimiento.createMany({
+      // A Contrato Marco gets none: it's a ceiling, paid through the POs
+      // issued against it (each is born with its own delivery milestone).
+      if (tipo === TipoContrato.PO) await tx.hitoSeguimiento.createMany({
         data: [
           {
             contratoId: contrato.id,
