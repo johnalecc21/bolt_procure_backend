@@ -97,6 +97,13 @@ export class VitrinaController {
     return this.service.eliminarItem(user.sub, id);
   }
 
+  /** Ids of every public vitrina — feeds the frontend's sitemap-vitrinas.xml. */
+  @Public()
+  @Get('sitemap')
+  sitemap() {
+    return this.service.sitemap();
+  }
+
   /** Public showcase — shareable, no login. */
   @Public()
   @Get(':id')

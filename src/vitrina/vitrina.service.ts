@@ -14,6 +14,7 @@ import { isEmail } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
+import { TtlCache } from '../common/utils/ttl-cache';
 import {
   CrearArchivoVitrinaDto,
   ItemCatalogoDto,
@@ -71,6 +72,26 @@ export class VitrinaService implements OnModuleInit {
   }
 
   // --- Lectura ------------------------------------------------------------
+
+  private readonly sitemapCache = new TtlCache<{ id: string }[]>(1);
+
+  /**
+   * Every public vitrina, for the frontend's sitemap. Same rule as publica():
+   * only approved homologaciones. Crawlers hit it rarely but in bursts, so the
+   * list is kept for 10 minutes.
+   */
+  async sitemap(): Promise<{ id: string }[]> {
+    const cached = this.sitemapCache.get('all');
+    if (cached) return cached;
+    const ids = await this.prisma.proveedorProfile.findMany({
+      where: { homologacion: { estado: EstadoHomologacion.APROBADO } },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+      take: 50_000, // sitemap protocol limit per file
+    });
+    this.sitemapCache.set('all', ids, 10 * 60_000);
+    return ids;
+  }
 
   /** Public, login-free showcase — only for proveedores with an approved homologación. */
   async publica(id: string) {

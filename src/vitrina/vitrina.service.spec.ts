@@ -6,6 +6,9 @@ import type { ProveedoresService } from '../proveedores/proveedores.service';
 
 function build(counts: { archivos?: number; items?: number } = {}) {
   const prisma = {
+    proveedorProfile: {
+      findMany: jest.fn().mockResolvedValue([{ id: 'P-1' }, { id: 'P-2' }]),
+    },
     archivoVitrina: {
       count: jest.fn().mockResolvedValue(counts.archivos ?? 0),
       create: jest
@@ -110,5 +113,20 @@ describe('VitrinaService', () => {
         imagenPath: 'P-9/item/1-a.jpg',
       }),
     ).rejects.toThrow('Ruta de imagen inválida.');
+  });
+});
+
+describe('VitrinaService.sitemap', () => {
+  it('lista solo homologaciones aprobadas y reutiliza el resultado', async () => {
+    const { svc, prisma } = build();
+    await expect(svc.sitemap()).resolves.toEqual([{ id: 'P-1' }, { id: 'P-2' }]);
+    await svc.sitemap();
+    expect(prisma.proveedorProfile.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.proveedorProfile.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { homologacion: { estado: 'APROBADO' } },
+        select: { id: true },
+      }),
+    );
   });
 });
