@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Contrato, EstadoContrato, Role } from '@prisma/client';
+import { Contrato, EstadoContrato, EstadoPago, Role } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import type { Redis } from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
@@ -55,6 +55,13 @@ export class VencimientosService {
   }
 
   private async procesar() {
+    // Payments past their agreed date are persisted as VENCIDO (the screens
+    // already show them that way; this keeps reports and filters honest).
+    const { count: pagosVencidos } = await this.prisma.pagoPO.updateMany({
+      where: { estado: EstadoPago.PENDIENTE, fechaPagoPactada: { lt: new Date() } },
+      data: { estado: EstadoPago.VENCIDO },
+    });
+    if (pagosVencidos > 0) this.logger.log(`${pagosVencidos} pagos marcados VENCIDO.`);
     const contratos = await this.prisma.contrato.findMany({
       where: { estado: { in: [EstadoContrato.ACTIVO, EstadoContrato.POR_VENCER] } },
     });

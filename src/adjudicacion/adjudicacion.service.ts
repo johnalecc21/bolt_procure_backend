@@ -5,8 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  Adjudicacion,
   EstadoRequerimiento,
   EstadoSubasta,
+  Prisma,
   TipoContrato,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -19,6 +21,7 @@ import {
   requiereRevisionLegal,
   UMBRAL_REVISION_LEGAL,
 } from '../common/utils/moneda.util';
+import { calcularLineas, type LineaCalculada } from './lineas.util';
 
 @Injectable()
 export class AdjudicacionService {
@@ -28,29 +31,54 @@ export class AdjudicacionService {
     private notificaciones: NotificacionesService,
   ) {}
 
+  /**
+   * Every award of the requerimiento (one per proveedor; several when it was
+   * split by items), or null when nothing has been awarded yet.
+   */
   async findByRequerimiento(companyId: string, requerimientoId: string) {
     await this.ownedByCompany(companyId, requerimientoId);
-    const adjudicacion = await this.prisma.adjudicacion.findUnique({
-      where: { requerimientoId },
-      include: { requerimiento: { select: { moneda: true } } },
-    });
-    if (!adjudicacion) return null;
-    const { requerimiento, ...rest } = adjudicacion;
+    const [requerimiento, adjudicaciones, items] = await Promise.all([
+      this.prisma.requerimiento.findUniqueOrThrow({
+        where: { id: requerimientoId },
+        select: { moneda: true },
+      }),
+      this.prisma.adjudicacion.findMany({
+        where: { requerimientoId },
+        include: {
+          proveedor: { select: { id: true, nombre: true } },
+          lineas: {
+            include: { item: true },
+            orderBy: { item: { orden: 'asc' } },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.itemRequerimiento.findMany({
+        // Lines no proveedor was awarded (declared void).
+        where: { requerimientoId, adjudicado: { is: null } },
+        orderBy: { orden: 'asc' },
+      }),
+    ]);
+    if (adjudicaciones.length === 0) return null;
+    const { moneda } = requerimiento;
     // Computed here so the screen and firmar() can never disagree on it.
     return {
-      ...rest,
-      umbralRevisionLegal: UMBRAL_REVISION_LEGAL[requerimiento.moneda],
-      requiereRevisionLegal: requiereRevisionLegal(
-        rest.precioFinal,
-        requerimiento.moneda,
-      ),
+      moneda,
+      umbralRevisionLegal: UMBRAL_REVISION_LEGAL[moneda],
+      total: adjudicaciones.reduce((s, a) => s + a.precioFinal, 0),
+      itemsDesiertos: items,
+      adjudicaciones: adjudicaciones.map((a) => ({
+        ...a,
+        requiereRevisionLegal: requiereRevisionLegal(a.precioFinal, moneda),
+      })),
     };
   }
 
   /**
-   * Price and terms come from the proveedor's own sent offer — or, if a
-   * negotiation round took place, from its final bid there — never from the
-   * browser. Adjudicating ends the tender and any round still running.
+   * Price and terms come from each proveedor's own sent offer — scaled by its
+   * final bid when a negotiation round took place — never from the browser.
+   * Adjudicating ends the tender and any round still running; it's a single
+   * decision, so a requerimiento can only be awarded once.
    */
   async create(companyId: string, dto: CreateAdjudicacionDto) {
     const requerimiento = await this.ownedByCompany(
@@ -66,78 +94,176 @@ export class AdjudicacionService {
         'Solo se puede adjudicar un proceso en licitación o en negociación.',
       );
     }
-    const oferta = await this.prisma.oferta.findFirst({
-      where: {
-        requerimientoId: dto.requerimientoId,
-        proveedorId: dto.proveedorId,
-        enviada: true,
-      },
-    });
-    if (!oferta) {
-      throw new BadRequestException(
-        'Ese proveedor no presentó oferta para este requerimiento.',
-      );
-    }
-    const existente = await this.prisma.adjudicacion.findUnique({
+    const existentes = await this.prisma.adjudicacion.count({
       where: { requerimientoId: dto.requerimientoId },
     });
-    if (existente) {
+    if (existentes > 0) {
       throw new ConflictException(
         'Este proceso ya tiene una adjudicación en curso.',
       );
     }
 
-    const session = await this.prisma.auctionSession.findUnique({
-      where: { requerimientoId: dto.requerimientoId },
-      include: { pujas: { where: { proveedorId: dto.proveedorId } } },
-    });
-    const precioFinal = session?.pujas[0]?.monto ?? oferta.precioTotal;
-    const ahora = new Date();
+    const [items, ofertas, session] = await Promise.all([
+      this.prisma.itemRequerimiento.findMany({
+        where: { requerimientoId: dto.requerimientoId },
+        orderBy: { orden: 'asc' },
+      }),
+      this.prisma.oferta.findMany({
+        where: { requerimientoId: dto.requerimientoId, enviada: true },
+        include: { items: true },
+      }),
+      this.prisma.auctionSession.findUnique({
+        where: { requerimientoId: dto.requerimientoId },
+        include: { pujas: true },
+      }),
+    ]);
+    const ofertaDe = new Map(ofertas.map((o) => [o.proveedorId, o]));
+    const pujaDe = new Map(
+      (session?.pujas ?? []).map((p) => [p.proveedorId, p.monto]),
+    );
 
-    return this.prisma.$transaction(async (tx) => {
-      if (session?.status === EstadoSubasta.ACTIVA) {
-        await tx.auctionSession.update({
-          where: { id: session.id },
-          data: { status: EstadoSubasta.CERRADA },
-        });
+    // proveedorId → itemIds (empty list = lump-sum award of the whole thing)
+    const porProveedor = new Map<string, string[]>();
+    if (items.length === 0) {
+      if (!dto.proveedorId || dto.asignaciones?.length) {
+        throw new BadRequestException(
+          'Este requerimiento no tiene ítems: adjudícalo completo a un proveedor.',
+        );
       }
-      if (requerimiento.fechaLimite > ahora) {
-        await tx.requerimiento.update({
-          where: { id: dto.requerimientoId },
-          data: { fechaLimite: ahora },
-        });
-        await tx.invitacion.updateMany({
-          where: { requerimientoId: dto.requerimientoId },
-          data: { fechaLimite: ahora },
-        });
+      porProveedor.set(dto.proveedorId, []);
+    } else if (dto.asignaciones?.length) {
+      const idsItems = new Set(items.map((i) => i.id));
+      for (const a of dto.asignaciones) {
+        if (!idsItems.has(a.itemId))
+          throw new BadRequestException('Ítem inválido en la asignación.');
+        const lista = porProveedor.get(a.proveedorId) ?? [];
+        if ([...porProveedor.values()].some((l) => l.includes(a.itemId)))
+          throw new BadRequestException(
+            'Cada ítem solo puede adjudicarse a un proveedor.',
+          );
+        lista.push(a.itemId);
+        porProveedor.set(a.proveedorId, lista);
       }
-      return tx.adjudicacion.create({
-        data: {
-          requerimientoId: dto.requerimientoId,
-          proveedorId: dto.proveedorId,
-          precioFinal,
-          plazoDias: oferta.plazoEntregaDias,
-          condicionesPagoDias: oferta.condicionesPagoDias,
-          garantiaMeses: oferta.garantiaMeses,
-          // One adjudicación per requerimiento, so its number makes the PO unique.
-          poId: `PO-${ahora.getFullYear()}-${requerimiento.numero.toString().padStart(4, '0')}`,
-        },
+    } else if (dto.proveedorId) {
+      const oferta = ofertaDe.get(dto.proveedorId);
+      porProveedor.set(
+        dto.proveedorId,
+        (oferta?.items ?? []).map((i) => i.itemId),
+      );
+    } else {
+      throw new BadRequestException('Indica a quién se adjudica.');
+    }
+
+    const planes: {
+      proveedorId: string;
+      precioFinal: number;
+      lineas: LineaCalculada[];
+      oferta: (typeof ofertas)[number];
+    }[] = [];
+    for (const [proveedorId, itemIds] of porProveedor) {
+      const oferta = ofertaDe.get(proveedorId);
+      if (!oferta) {
+        throw new BadRequestException(
+          'Ese proveedor no presentó oferta para este requerimiento.',
+        );
+      }
+      if (items.length === 0) {
+        planes.push({
+          proveedorId,
+          precioFinal: pujaDe.get(proveedorId) ?? oferta.precioTotal,
+          lineas: [],
+          oferta,
+        });
+        continue;
+      }
+      if (itemIds.length === 0) {
+        throw new BadRequestException(
+          'Ese proveedor no cotizó ningún ítem de este requerimiento.',
+        );
+      }
+      const calculo = calcularLineas(
+        items,
+        oferta.items,
+        itemIds,
+        oferta.precioTotal,
+        pujaDe.get(proveedorId),
+      );
+      if (!calculo) {
+        throw new BadRequestException(
+          'Solo puedes adjudicar a un proveedor los ítems que cotizó.',
+        );
+      }
+      planes.push({ proveedorId, ...calculo, oferta });
+    }
+
+    const ahora = new Date();
+    const base = `PO-${ahora.getFullYear()}-${requerimiento.numero.toString().padStart(4, '0')}`;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        if (session?.status === EstadoSubasta.ACTIVA) {
+          await tx.auctionSession.update({
+            where: { id: session.id },
+            data: { status: EstadoSubasta.CERRADA },
+          });
+        }
+        if (requerimiento.fechaLimite > ahora) {
+          await tx.requerimiento.update({
+            where: { id: dto.requerimientoId },
+            data: { fechaLimite: ahora },
+          });
+          await tx.invitacion.updateMany({
+            where: { requerimientoId: dto.requerimientoId },
+            data: { fechaLimite: ahora },
+          });
+        }
+        const creadas: Adjudicacion[] = [];
+        for (const [i, plan] of planes.entries()) {
+          creadas.push(
+            await tx.adjudicacion.create({
+              data: {
+                requerimientoId: dto.requerimientoId,
+                proveedorId: plan.proveedorId,
+                precioFinal: plan.precioFinal,
+                plazoDias: plan.oferta.plazoEntregaDias,
+                condicionesPagoDias: plan.oferta.condicionesPagoDias,
+                garantiaMeses: plan.oferta.garantiaMeses,
+                // The requerimiento's number makes the PO unique; a split
+                // award numbers each proveedor's PO under it.
+                poId: planes.length === 1 ? base : `${base}-${i + 1}`,
+                lineas: { create: plan.lineas },
+              },
+            }),
+          );
+        }
+        return creadas;
       });
-    });
+    } catch (err) {
+      // Two buyers awarding at the same moment: the unique constraints catch it.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Este proceso ya tiene una adjudicación en curso.',
+        );
+      }
+      throw err;
+    }
   }
 
+  /** Confirms the award decision as a whole — every proveedor it names. */
   async confirmar(
     companyId: string,
     requerimientoId: string,
     actorNombre: string,
   ) {
     await this.ownedByCompany(companyId, requerimientoId);
-    const adjudicacion = await this.getOrThrow(requerimientoId);
+    const adjudicaciones = await this.listOrThrow(requerimientoId);
     // The provider needs to hear this the moment a human decides, not only
     // once the (separate, later) signature step completes — that's the real
     // "award letter" moment in procurement, even though it's conditional on
     // the contract still getting signed.
-    const requerimiento = await this.prisma.requerimiento.findUnique({
+    const requerimiento = await this.prisma.requerimiento.findUniqueOrThrow({
       where: { id: requerimientoId },
       select: { titulo: true, companyId: true, numero: true, moneda: true },
     });
@@ -146,32 +272,46 @@ export class AdjudicacionService {
         where: { requerimientoId, confirmada: false },
         data: { confirmada: true },
       }),
-      this.prisma.requerimiento.update({
-        where: { id: requerimientoId },
+      this.prisma.requerimiento.updateMany({
+        where: {
+          id: requerimientoId,
+          estado: { not: EstadoRequerimiento.EN_CUMPLIMIENTO },
+        },
         data: { estado: EstadoRequerimiento.ADJUDICADO },
       }),
     ]);
     // Already confirmed (double click, second user): don't notify twice.
     if (count === 0) return { ok: true };
-    const proveedor = await this.prisma.proveedorProfile.findUnique({
-      where: { id: adjudicacion.proveedorId },
+    const proveedores = await this.prisma.proveedorProfile.findMany({
+      where: { id: { in: adjudicaciones.map((a) => a.proveedorId) } },
       include: { user: true },
     });
+    const nombre = new Map(proveedores.map((p) => [p.id, p.nombre]));
     await this.auditLog.log({
-      companyId: requerimiento?.companyId,
+      companyId: requerimiento.companyId,
       usuario: actorNombre,
       accion: 'Adjudicación confirmada',
-      detalle: `${requerimiento ? formatRequerimientoCodigo(requerimiento.numero) : requerimientoId} → ${proveedor?.nombre ?? adjudicacion.proveedorId} (${formatMonto(adjudicacion.precioFinal, requerimiento?.moneda)})`,
+      detalle: `${formatRequerimientoCodigo(requerimiento.numero)} → ${adjudicaciones
+        .map(
+          (a) =>
+            `${nombre.get(a.proveedorId) ?? a.proveedorId} (${formatMonto(a.precioFinal, requerimiento.moneda)})`,
+        )
+        .join(', ')}`,
     });
-    if (requerimiento && proveedor?.user) {
-      await this.notificaciones.create(
-        proveedor.user.id,
-        'CONTRATO',
-        '¡Fuiste seleccionado como ganador!',
-        `Tu oferta para "${requerimiento.titulo}" fue seleccionada, sujeta a la firma del contrato. Revisa la carta de adjudicación en tu historial.`,
-        '/proveedor/historial',
-      );
-    }
+    const parcial = adjudicaciones.length > 1;
+    await Promise.all(
+      proveedores
+        .filter((p) => p.user)
+        .map((p) =>
+          this.notificaciones.create(
+            p.user!.id,
+            'CONTRATO',
+            '¡Fuiste seleccionado como ganador!',
+            `Tu oferta para "${requerimiento.titulo}" fue seleccionada${parcial ? ' en parte de sus ítems' : ''}, sujeta a la firma del contrato. Revisa la carta de adjudicación en tu historial.`,
+            '/proveedor/historial',
+          ),
+        ),
+    );
     return { ok: true };
   }
 
@@ -179,34 +319,40 @@ export class AdjudicacionService {
     companyId: string,
     requerimientoId: string,
     actorNombre: string,
+    adjudicacionId?: string,
   ) {
     await this.ownedByCompany(companyId, requerimientoId);
-    await this.getOrThrow(requerimientoId);
+    const adjudicacion = await this.elegir(requerimientoId, adjudicacionId);
     const requerimiento = await this.prisma.requerimiento.findUniqueOrThrow({
       where: { id: requerimientoId },
       select: { companyId: true, numero: true },
     });
     await this.prisma.adjudicacion.update({
-      where: { requerimientoId },
+      where: { id: adjudicacion.id },
       data: { revisionLegal: true },
     });
     await this.auditLog.log({
       companyId: requerimiento.companyId,
       usuario: actorNombre,
       accion: 'Revisión legal completada',
-      detalle: `Contrato ${formatRequerimientoCodigo(requerimiento.numero)} desbloqueado para firma`,
+      detalle: `Contrato ${adjudicacion.poId} (${formatRequerimientoCodigo(requerimiento.numero)}) desbloqueado para firma`,
     });
     return { ok: true };
   }
 
+  /**
+   * Signs one award's contract. The requerimiento moves to EN_CUMPLIMIENTO —
+   * and the proveedores left out hear about it — once every award is signed.
+   */
   async firmar(
     companyId: string,
     requerimientoId: string,
     actorNombre: string,
     notificarPerdedoresOverride?: boolean,
+    adjudicacionId?: string,
   ) {
     await this.ownedByCompany(companyId, requerimientoId);
-    const adjudicacion = await this.getOrThrow(requerimientoId);
+    const adjudicacion = await this.elegir(requerimientoId, adjudicacionId);
     if (!adjudicacion.confirmada) {
       throw new BadRequestException(
         'Confirma la adjudicación antes de enviar a firma.',
@@ -215,12 +361,12 @@ export class AdjudicacionService {
     if (adjudicacion.firmado) {
       throw new ConflictException('Este contrato ya fue firmado.');
     }
-    const { moneda } = await this.prisma.requerimiento.findUniqueOrThrow({
+    const requerimiento = await this.prisma.requerimiento.findUniqueOrThrow({
       where: { id: requerimientoId },
-      select: { moneda: true },
+      include: { company: { select: { umbralContratoMarco: true } } },
     });
     if (
-      requiereRevisionLegal(adjudicacion.precioFinal, moneda) &&
+      requiereRevisionLegal(adjudicacion.precioFinal, requerimiento.moneda) &&
       !adjudicacion.revisionLegal
     ) {
       throw new BadRequestException(
@@ -232,11 +378,6 @@ export class AdjudicacionService {
     // first created, and we persist it so the record reflects what happened.
     const notificarPerdedores =
       notificarPerdedoresOverride ?? adjudicacion.notificarPerdedores;
-
-    const requerimiento = await this.prisma.requerimiento.findUniqueOrThrow({
-      where: { id: requerimientoId },
-      include: { company: { select: { umbralContratoMarco: true } } },
-    });
     const proveedor = await this.prisma.proveedorProfile.findUniqueOrThrow({
       where: { id: adjudicacion.proveedorId },
       include: { user: true },
@@ -261,23 +402,20 @@ export class AdjudicacionService {
     const cierre = new Date(entrega);
     cierre.setDate(cierre.getDate() + 5);
 
-    const contrato = await this.prisma.$transaction(async (tx) => {
+    const { completo } = await this.prisma.$transaction(async (tx) => {
       // Conditional: two simultaneous "firmar" calls can't both create a contract.
       const { count } = await tx.adjudicacion.updateMany({
-        where: { requerimientoId, firmado: false },
+        where: { id: adjudicacion.id, firmado: false },
         data: { firmado: true, notificarPerdedores },
       });
       if (count === 0)
         throw new ConflictException('Este contrato ya fue firmado.');
-      await tx.requerimiento.update({
-        where: { id: requerimientoId },
-        data: { estado: EstadoRequerimiento.EN_CUMPLIMIENTO },
-      });
       const contrato = await tx.contrato.create({
         data: {
           companyId: requerimiento.companyId,
           requerimientoId,
           tipo,
+          proveedorId: proveedor.id,
           proveedorNombre: proveedor.nombre,
           categoria: requerimiento.categoria,
           monto: adjudicacion.precioFinal,
@@ -287,6 +425,10 @@ export class AdjudicacionService {
           vigenciaFin,
           condicionesPagoDias: adjudicacion.condicionesPagoDias,
         },
+      });
+      await tx.adjudicacion.update({
+        where: { id: adjudicacion.id },
+        data: { contratoId: contrato.id },
       });
       // Default 30/40/30 payment split — the client can adjust each hito's
       // porcentaje afterward from Seguimiento, before marking it completado.
@@ -315,14 +457,23 @@ export class AdjudicacionService {
           },
         ],
       });
-      return contrato;
+      const pendientes = await tx.adjudicacion.count({
+        where: { requerimientoId, firmado: false },
+      });
+      if (pendientes === 0) {
+        await tx.requerimiento.update({
+          where: { id: requerimientoId },
+          data: { estado: EstadoRequerimiento.EN_CUMPLIMIENTO },
+        });
+      }
+      return { completo: pendientes === 0 };
     });
 
     await this.auditLog.log({
       companyId: requerimiento.companyId,
       usuario: actorNombre,
       accion: 'Contrato firmado electrónicamente',
-      detalle: `${formatRequerimientoCodigo(requerimiento.numero)} → ${proveedor.nombre}`,
+      detalle: `${formatRequerimientoCodigo(requerimiento.numero)} → ${proveedor.nombre} (${adjudicacion.poId})`,
     });
 
     if (proveedor.user) {
@@ -335,11 +486,16 @@ export class AdjudicacionService {
       );
     }
 
-    if (notificarPerdedores) {
+    if (completo && notificarPerdedores) {
+      const ganadores = await this.prisma.adjudicacion.findMany({
+        where: { requerimientoId },
+        select: { proveedorId: true },
+      });
       const perdedores = await this.prisma.oferta.findMany({
         where: {
           requerimientoId,
-          proveedorId: { not: adjudicacion.proveedorId },
+          enviada: true,
+          proveedorId: { notIn: ganadores.map((g) => g.proveedorId) },
         },
         include: { proveedor: { include: { user: true } } },
       });
@@ -359,7 +515,7 @@ export class AdjudicacionService {
       );
     }
 
-    return { ok: true, poId: adjudicacion.poId };
+    return { ok: true, poId: adjudicacion.poId, completo };
   }
 
   private async ownedByCompany(companyId: string, requerimientoId: string) {
@@ -371,12 +527,28 @@ export class AdjudicacionService {
     return req;
   }
 
-  private async getOrThrow(requerimientoId: string) {
-    const adjudicacion = await this.prisma.adjudicacion.findUnique({
+  private async listOrThrow(requerimientoId: string) {
+    const adjudicaciones = await this.prisma.adjudicacion.findMany({
       where: { requerimientoId },
     });
-    if (!adjudicacion)
+    if (adjudicaciones.length === 0)
       throw new NotFoundException('Este requerimiento no tiene adjudicación.');
-    return adjudicacion;
+    return adjudicaciones;
+  }
+
+  /** The award an action targets: the given one, or the only one there is. */
+  private async elegir(requerimientoId: string, adjudicacionId?: string) {
+    const adjudicaciones = await this.listOrThrow(requerimientoId);
+    if (adjudicacionId) {
+      const a = adjudicaciones.find((x) => x.id === adjudicacionId);
+      if (!a) throw new NotFoundException('Adjudicación no encontrada.');
+      return a;
+    }
+    if (adjudicaciones.length > 1) {
+      throw new BadRequestException(
+        'Este proceso tiene varias adjudicaciones: indica cuál.',
+      );
+    }
+    return adjudicaciones[0];
   }
 }

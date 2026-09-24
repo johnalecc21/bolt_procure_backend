@@ -1,5 +1,10 @@
 import { PrioridadRequerimiento } from '@prisma/client';
+import { Type } from 'class-transformer';
+import { ItemRequerimientoDto } from './create-requerimiento.dto';
 import {
+  ArrayMaxSize,
+  IsArray,
+  ValidateNested,
   IsEnum,
   IsISO8601,
   IsInt,
@@ -36,4 +41,12 @@ export class ReenviarRequerimientoDto {
   @IsEnum(PrioridadRequerimiento)
   @IsOptional()
   prioridad?: PrioridadRequerimiento;
+
+  /** Replaces the bill of quantities; [] removes it (lump-sum offers). */
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => ItemRequerimientoDto)
+  @IsOptional()
+  items?: ItemRequerimientoDto[];
 }

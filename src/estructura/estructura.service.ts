@@ -350,6 +350,9 @@ export class EstructuraService {
           centroCostoId,
           moneda,
           estado: { in: ESTADOS_EN_PROCESO },
+          // A split award signs one contract at a time: once any is signed
+          // it counts as committed, so the estimate stops counting here.
+          contratos: { none: {} },
           createdAt: rango,
         },
         _sum: { montoEstimado: true },

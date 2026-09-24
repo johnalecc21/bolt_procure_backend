@@ -1,6 +1,13 @@
-import { IsBoolean, IsOptional } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
-export class FirmarAdjudicacionDto {
+export class AdjudicacionObjetivoDto {
+  /** Which award of the requerimiento; optional when it has only one. */
+  @IsOptional()
+  @IsString()
+  adjudicacionId?: string;
+}
+
+export class FirmarAdjudicacionDto extends AdjudicacionObjetivoDto {
   @IsOptional()
   @IsBoolean()
   notificarPerdedores?: boolean;

@@ -157,6 +157,18 @@ enum EstadoPago {
   VENCIDO
 }
 
+enum EstadoFactura {
+  RADICADA
+  APROBADA
+  RECHAZADA
+}
+
+enum EstadoProntoPago {
+  SOLICITADA
+  ACEPTADA
+  RECHAZADA
+}
+
 enum PrioridadRequerimiento {
   NORMAL
   ALTA
@@ -334,7 +346,8 @@ model Requerimiento {
   centroCosto CentroCosto? @relation(fields: [centroCostoId], references: [id])
 
   ofertas        Oferta[]
-  adjudicacion   Adjudicacion?
+  adjudicaciones Adjudicacion[]
+  items          ItemRequerimiento[]
   aprobaciones   Aprobacion[]
   invitaciones   Invitacion[]
   comentarios    ComentarioRequerimiento[]
@@ -469,6 +482,8 @@ model ProveedorProfile {
   ofertas         Oferta[]
   invitaciones    Invitacion[]
   pagos           PagoPO[]
+  adjudicaciones  Adjudicacion[]
+  contratos       Contrato[]
   disputas        Disputa[]
   preguntas       Pregunta[]
   evaluaciones    EvaluacionDesempeno[]
@@ -542,15 +557,53 @@ model Oferta {
 
   requerimiento Requerimiento    @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
   proveedor     ProveedorProfile @relation(fields: [proveedorId], references: [id])
+  // Per-line prices when the requerimiento is itemized; precioTotal is then
+  // computed server-side from these (lines left out = not quoted).
+  items         ItemOferta[]
 
   @@unique([requerimientoId, proveedorId])
   @@index([proveedorId])
   @@map("ofertas")
 }
 
+/// One line of a requerimiento's bill of quantities. A requerimiento without
+/// items is quoted as a single lump sum (Oferta.precioTotal).
+model ItemRequerimiento {
+  id              String  @id @default(cuid())
+  requerimientoId String
+  orden           Int
+  descripcion     String
+  cantidad        Float
+  unidad          String
+  especificacion  String?
+
+  requerimiento Requerimiento      @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
+  precios       ItemOferta[]
+  adjudicado    AdjudicacionLinea?
+
+  @@index([requerimientoId, orden])
+  @@map("items_requerimiento")
+}
+
+model ItemOferta {
+  id             String @id @default(cuid())
+  ofertaId       String
+  itemId         String
+  precioUnitario Int
+
+  oferta Oferta            @relation(fields: [ofertaId], references: [id], onDelete: Cascade)
+  item   ItemRequerimiento @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([ofertaId, itemId])
+  @@index([itemId])
+  @@map("items_oferta")
+}
+
+/// One per awarded proveedor: an itemized requerimiento can be split across
+/// several (each gets its own lines, PO and contract).
 model Adjudicacion {
   id                  String   @id @default(cuid())
-  requerimientoId     String   @unique
+  requerimientoId     String
   proveedorId         String
   precioFinal         Int
   plazoDias           Int
@@ -561,12 +614,34 @@ model Adjudicacion {
   revisionLegal       Boolean  @default(false)
   firmado             Boolean  @default(false)
   notificarPerdedores Boolean  @default(true)
+  // Set by firmar() — the contract this award produced.
+  contratoId          String?  @unique
   createdAt           DateTime @default(now())
 
-  requerimiento Requerimiento @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
+  requerimiento Requerimiento       @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
+  proveedor     ProveedorProfile    @relation(fields: [proveedorId], references: [id])
+  contrato      Contrato?           @relation(fields: [contratoId], references: [id])
+  lineas        AdjudicacionLinea[]
 
+  @@unique([requerimientoId, proveedorId])
   @@index([proveedorId])
   @@map("adjudicaciones")
+}
+
+model AdjudicacionLinea {
+  id             String @id @default(cuid())
+  adjudicacionId String
+  // Unique: a line can only be awarded once.
+  itemId         String @unique
+  cantidad       Float
+  precioUnitario Int
+  subtotal       Int
+
+  adjudicacion Adjudicacion      @relation(fields: [adjudicacionId], references: [id], onDelete: Cascade)
+  item         ItemRequerimiento @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([adjudicacionId])
+  @@map("adjudicacion_lineas")
 }
 
 // ---------------------------------------------------------------------------
@@ -581,6 +656,8 @@ model Contrato {
   companyId             String
   requerimientoId       String?
   tipo                  TipoContrato
+  // Who the contract is with. Nullable only for rows that predate it.
+  proveedorId           String?
   proveedorNombre       String
   categoria             String
   monto                 Int
@@ -621,10 +698,13 @@ model Contrato {
   hijas         Contrato[]            @relation("ContratoPadreHijas")
   evaluaciones  EvaluacionDesempeno[]
   centroCosto   CentroCosto?          @relation(fields: [centroCostoId], references: [id])
+  proveedor     ProveedorProfile?     @relation(fields: [proveedorId], references: [id])
+  adjudicacion  Adjudicacion?
 
   @@index([companyId])
   @@index([estado])
   @@index([requerimientoId])
+  @@index([proveedorId])
   @@map("contratos")
 }
 
@@ -737,23 +817,76 @@ model Pregunta {
 }
 
 model PagoPO {
-  id               String     @id @default(cuid())
-  contratoId       String
-  proveedorId      String
-  monto            Int
-  moneda           Moneda     @default(USD)
-  fechaEmision     DateTime
-  fechaPagoPactada DateTime
-  estado           EstadoPago @default(PENDIENTE)
-  disputaAbierta   Boolean    @default(false)
+  id                  String     @id @default(cuid())
+  contratoId          String
+  proveedorId         String
+  monto               Int
+  moneda              Moneda     @default(USD)
+  fechaEmision        DateTime
+  fechaPagoPactada    DateTime
+  estado              EstadoPago @default(PENDIENTE)
+  disputaAbierta      Boolean    @default(false)
+  // Early-payment discount agreed through SolicitudProntoPago (0 = none).
+  descuentoProntoPago Int        @default(0)
+  // Filled when the buyer registers the payment.
+  fechaPago           DateTime?
+  montoPagado         Int?
+  referenciaPago      String?
+  soportePath         String?
+  soporteNombre       String?
+  pagadoPor           String?
 
-  contrato   Contrato         @relation(fields: [contratoId], references: [id])
-  proveedor  ProveedorProfile @relation(fields: [proveedorId], references: [id])
-  hitoOrigen HitoSeguimiento?
+  contrato              Contrato              @relation(fields: [contratoId], references: [id])
+  proveedor             ProveedorProfile      @relation(fields: [proveedorId], references: [id])
+  hitoOrigen            HitoSeguimiento?
+  facturas              Factura[]
+  solicitudesProntoPago SolicitudProntoPago[]
 
   @@index([proveedorId])
   @@index([contratoId])
   @@map("pagos_po")
+}
+
+/// The proveedor's invoice for a PagoPO. A rejected one stays as history and
+/// a new one can be filed; at most one is RADICADA or APROBADA at a time.
+model Factura {
+  id            String        @id @default(cuid())
+  pagoId        String
+  numero        String
+  fechaEmision  DateTime
+  monto         Int
+  archivoPath   String
+  archivoNombre String
+  estado        EstadoFactura @default(RADICADA)
+  motivoRechazo String?
+  revisadaPor   String?
+  revisadaAt    DateTime?
+  createdAt     DateTime      @default(now())
+
+  pago PagoPO @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+
+  @@index([pagoId])
+  @@map("facturas")
+}
+
+/// Proveedor asks to be paid before the agreed date in exchange for a discount;
+/// the buyer accepts (the payment date and net amount change) or declines.
+model SolicitudProntoPago {
+  id             String           @id @default(cuid())
+  pagoId         String
+  fechaPropuesta DateTime
+  descuentoPct   Float
+  montoNeto      Int
+  estado         EstadoProntoPago @default(SOLICITADA)
+  motivo         String?
+  respondidaPor  String?
+  respondidaAt   DateTime?
+  createdAt      DateTime         @default(now())
+
+  pago PagoPO @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+
+  @@index([pagoId])
+  @@map("solicitudes_pronto_pago")
 }
 
 // ---------------------------------------------------------------------------

@@ -6,7 +6,10 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AdjudicacionService } from './adjudicacion.service';
 import { CreateAdjudicacionDto } from './dto/create-adjudicacion.dto';
-import { FirmarAdjudicacionDto } from './dto/firmar-adjudicacion.dto';
+import {
+  AdjudicacionObjetivoDto,
+  FirmarAdjudicacionDto,
+} from './dto/firmar-adjudicacion.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('adjudicacion')
@@ -46,11 +49,13 @@ export class AdjudicacionController {
   revisionLegal(
     @CurrentUser() user: AuthenticatedUser,
     @Param('requerimientoId') requerimientoId: string,
+    @Body() dto: AdjudicacionObjetivoDto,
   ) {
     return this.service.revisionLegal(
       user.companyId,
       requerimientoId,
       user.email,
+      dto.adjudicacionId,
     );
   }
 
@@ -66,6 +71,7 @@ export class AdjudicacionController {
       requerimientoId,
       user.email,
       dto.notificarPerdedores,
+      dto.adjudicacionId,
     );
   }
 }

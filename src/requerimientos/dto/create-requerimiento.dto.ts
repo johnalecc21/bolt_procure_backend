@@ -1,7 +1,10 @@
 import { Type } from 'class-transformer';
 import { Moneda, PrioridadRequerimiento } from '@prisma/client';
 import {
+  ArrayMaxSize,
   IsArray,
+  IsNumber,
+  MaxLength,
   IsEnum,
   IsInt,
   IsISO8601,
@@ -19,6 +22,28 @@ export class EspecificacionDto {
 
   @IsString()
   value: string;
+}
+
+/** One line of the bill of quantities; suppliers price each line. */
+export class ItemRequerimientoDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(300)
+  descripcion: string;
+
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  cantidad: number;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(30)
+  unidad: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  especificacion?: string;
 }
 
 export class CreateRequerimientoDto {
@@ -68,4 +93,12 @@ export class CreateRequerimientoDto {
   @IsString({ each: true })
   @IsOptional()
   proveedorIds?: string[];
+
+  /** Optional bill of quantities; without it the offer is a single lump sum. */
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => ItemRequerimientoDto)
+  @IsOptional()
+  items?: ItemRequerimientoDto[];
 }

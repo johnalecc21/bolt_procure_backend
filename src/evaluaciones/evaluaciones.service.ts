@@ -28,16 +28,10 @@ export class EvaluacionesService {
   ) {
     const contrato = await this.prisma.contrato.findFirst({
       where: { id: dto.contratoId, companyId },
-      include: {
-        requerimiento: {
-          select: { adjudicacion: { select: { proveedorId: true } } },
-        },
-      },
     });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
-    // POs under a Contrato Marco copy the padre's requerimientoId, so this
-    // resolves for them too.
-    const proveedorId = contrato.requerimiento?.adjudicacion?.proveedorId;
+    // POs under a Contrato Marco copy the padre's proveedorId.
+    const proveedorId = contrato.proveedorId;
     if (!proveedorId) {
       throw new BadRequestException(
         'Este contrato no está vinculado a un proveedor de la plataforma.',

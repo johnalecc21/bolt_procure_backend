@@ -31,8 +31,13 @@ function invitacion(
         },
       ],
       auctionSession: null,
-      adjudicacion: adj,
-      contratos: [{ createdAt: new Date('2026-03-12T00:00:00Z') }],
+      adjudicaciones: adj ? [adj] : [],
+      contratos: [
+        {
+          createdAt: new Date('2026-03-12T00:00:00Z'),
+          proveedorId: adj?.proveedorId,
+        },
+      ],
       ...extra,
     },
   };

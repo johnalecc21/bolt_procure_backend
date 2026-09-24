@@ -6,6 +6,7 @@ import {
   formatRequerimientoCodigo,
 } from '../common/utils/codigo.util';
 import { MAX_DIAS_PERIODO, MAX_FILAS } from './analitica.const';
+import { resultadoProveedor } from '../adjudicacion/resultado.util';
 import { calcularCompetencia } from './competencia.util';
 import { PeriodoAnaliticaDto } from './dto/analitica.dto';
 
@@ -64,7 +65,6 @@ export class AnaliticaProveedorService {
       select: { nombre: true, vitrinaVistas: true },
     });
 
-    const esMio = { requerimiento: { adjudicacion: { proveedorId } } };
     const [invitaciones, contratos, pagos, hitos, evaluaciones] =
       await Promise.all([
         this.prisma.invitacion.findMany({
@@ -107,7 +107,7 @@ export class AnaliticaProveedorService {
                     pujas: { select: { proveedorId: true, monto: true } },
                   },
                 },
-                adjudicacion: {
+                adjudicaciones: {
                   select: {
                     proveedorId: true,
                     precioFinal: true,
@@ -119,8 +119,7 @@ export class AnaliticaProveedorService {
                 contratos: {
                   where: { contratoPadreId: null },
                   orderBy: { createdAt: 'asc' },
-                  take: 1,
-                  select: { createdAt: true },
+                  select: { createdAt: true, proveedorId: true },
                 },
               },
             },
@@ -128,7 +127,7 @@ export class AnaliticaProveedorService {
         }),
         this.prisma.contrato.findMany({
           where: {
-            OR: [esMio, { padre: esMio }],
+            proveedorId,
             AND: [
               {
                 OR: [
@@ -181,7 +180,7 @@ export class AnaliticaProveedorService {
         this.prisma.hitoSeguimiento.findMany({
           where: {
             comprometido: ventana,
-            contrato: { OR: [esMio, { padre: esMio }] },
+            contrato: { proveedorId },
           },
           take: MAX_FILAS,
           select: {
@@ -223,17 +222,21 @@ export class AnaliticaProveedorService {
         const miOferta = r.ofertas.find((o) => o.proveedorId === proveedorId);
         const pujas = r.auctionSession?.pujas ?? [];
         const miPuja = pujas.find((p) => p.proveedorId === proveedorId);
-        const adj = r.adjudicacion;
-        let resultado: Resultado = miOferta ? 'pendiente' : 'sin_oferta';
-        if (miOferta && adj?.firmado)
-          resultado = adj.proveedorId === proveedorId ? 'ganado' : 'perdido';
-        else if (miOferta && adj?.confirmada && adj.proveedorId === proveedorId)
-          resultado = 'seleccionado';
-        const fechaResultado = adj?.firmado
-          ? (r.contratos[0]?.createdAt ?? adj.createdAt)
-          : null;
+        const res = resultadoProveedor(r.adjudicaciones, proveedorId);
+        const adj = res.mia;
+        const resultado: Resultado = miOferta ? res.resultado : 'sin_oferta';
+        const fechaResultado =
+          resultado === 'ganado'
+            ? (r.contratos.find((c) => c.proveedorId === proveedorId)
+                ?.createdAt ?? adj?.createdAt)
+            : resultado === 'perdido'
+              ? (r.contratos.at(-1)?.createdAt ??
+                r.adjudicaciones[0]?.createdAt)
+              : null;
         const competencia =
-          resultado === 'perdido' && r.company.feedbackCompetitivo && adj
+          resultado === 'perdido' &&
+          r.company.feedbackCompetitivo &&
+          res.precioComparable
             ? calcularCompetencia(
                 r.ofertas.map((o) => ({
                   proveedorId: o.proveedorId,
@@ -244,7 +247,7 @@ export class AnaliticaProveedorService {
                   precio: p.monto,
                 })),
                 proveedorId,
-                adj.precioFinal,
+                res.precioComparable,
               )
             : null;
         return {

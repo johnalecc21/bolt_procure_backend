@@ -60,9 +60,7 @@ export class SeguimientoService {
     const hito = await this.prisma.hitoSeguimiento.findFirst({
       where: { id: hitoId, contrato: { companyId } },
       include: {
-        contrato: {
-          include: { requerimiento: { include: { adjudicacion: true } } },
-        },
+        contrato: true,
       },
     });
     if (!hito) throw new NotFoundException('Hito no encontrado.');
@@ -95,8 +93,7 @@ export class SeguimientoService {
     // the whole point of splitting a contract into milestones instead of
     // paying 100% upfront.
     if (pasaACompletado && hito.porcentaje > 0) {
-      const proveedorId =
-        hito.contrato.requerimiento?.adjudicacion?.proveedorId;
+      const proveedorId = hito.contrato.proveedorId;
       if (proveedorId) {
         const monto = Math.round((hito.contrato.monto * hito.porcentaje) / 100);
         const fechaPagoPactada = new Date();

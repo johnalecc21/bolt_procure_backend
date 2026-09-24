@@ -25,7 +25,7 @@ function build() {
       findUnique: jest.fn().mockResolvedValue({
         estado: 'EN_LICITACION',
         fechaLimite: new Date(Date.now() + 86_400_000),
-        adjudicacion: null,
+        _count: { adjudicaciones: 0 },
       }),
       update: jest.fn(),
     },
@@ -194,7 +194,7 @@ describe('SubastaService.iniciar — estado del proceso', () => {
     prisma.requerimiento.findUnique.mockResolvedValue({
       estado: 'ADJUDICADO',
       fechaLimite: new Date(),
-      adjudicacion: { id: 'a' },
+      _count: { adjudicaciones: 1 },
     });
     await expect(
       svc.iniciar('r1', { duracionMin: 30, participantes: 'todos' }),

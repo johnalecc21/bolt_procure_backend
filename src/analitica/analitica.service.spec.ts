@@ -64,12 +64,14 @@ const proceso = (extra: Record<string, unknown> = {}) => ({
     { estado: 'RECHAZADA', resueltoAt: new Date('2026-03-02T00:00:00Z') },
     { estado: 'APROBADA', resueltoAt: new Date('2026-03-03T00:00:00Z') },
   ],
-  adjudicacion: {
-    proveedorId: 'p1',
-    precioFinal: 850,
-    firmado: true,
-    createdAt: new Date('2026-03-12T00:00:00Z'),
-  },
+  adjudicaciones: [
+    {
+      proveedorId: 'p1',
+      precioFinal: 850,
+      firmado: true,
+      createdAt: new Date('2026-03-12T00:00:00Z'),
+    },
+  ],
   auctionSession: {
     pujas: [
       { montoInicial: 900, monto: 850 },
@@ -142,12 +144,14 @@ describe('AnaliticaService.cfo', () => {
     const { svc, prisma } = build();
     prisma.requerimiento.findMany.mockResolvedValue([
       proceso({
-        adjudicacion: {
-          proveedorId: 'p1',
-          precioFinal: 850,
-          firmado: false,
-          createdAt: new Date(),
-        },
+        adjudicaciones: [
+          {
+            proveedorId: 'p1',
+            precioFinal: 850,
+            firmado: false,
+            createdAt: new Date(),
+          },
+        ],
         contratos: [],
       }),
     ]);

@@ -147,7 +147,7 @@ export class AnaliticaService {
         invitaciones: { where: { enviada: true }, select: { id: true } },
         ofertas: { where: { enviada: true }, select: { precioTotal: true } },
         aprobaciones: { select: { estado: true, resueltoAt: true } },
-        adjudicacion: {
+        adjudicaciones: {
           select: {
             proveedorId: true,
             precioFinal: true,
@@ -161,7 +161,6 @@ export class AnaliticaService {
         contratos: {
           where: { contratoPadreId: null },
           orderBy: { createdAt: 'asc' },
-          take: 1,
           select: { createdAt: true, proveedorNombre: true },
         },
       },
@@ -172,9 +171,12 @@ export class AnaliticaService {
       const aprobada = r.aprobaciones.find(
         (a) => a.estado === EstadoAprobacion.APROBADA,
       );
-      const firma = r.adjudicacion?.firmado
-        ? (r.contratos[0]?.createdAt ?? null)
-        : null;
+      // A split award counts as signed once every proveedor's contract is.
+      const adjs = r.adjudicaciones;
+      const firma =
+        adjs.length > 0 && adjs.every((a) => a.firmado)
+          ? (r.contratos.at(-1)?.createdAt ?? null)
+          : null;
       return {
         id: r.id,
         codigo: formatRequerimientoCodigo(r.numero),
@@ -209,8 +211,12 @@ export class AnaliticaService {
         negociacionFinal: pujas.length
           ? Math.min(...pujas.map((p) => p.monto))
           : null,
-        proveedorAdjudicado: r.contratos[0]?.proveedorNombre ?? null,
-        precioFinal: r.adjudicacion?.precioFinal ?? null,
+        proveedorAdjudicado: r.contratos.length
+          ? r.contratos.map((c) => c.proveedorNombre).join(' + ')
+          : null,
+        precioFinal: adjs.length
+          ? adjs.reduce((s, a) => s + a.precioFinal, 0)
+          : null,
         firmado: firma?.toISOString() ?? null,
       };
     });

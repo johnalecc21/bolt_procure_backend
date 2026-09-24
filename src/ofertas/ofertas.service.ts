@@ -15,6 +15,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { UpsertOfertaDto } from './dto/upsert-oferta.dto';
 import { calcularCompetencia } from '../analitica/competencia.util';
+import { resultadoProveedor } from '../adjudicacion/resultado.util';
+import { subtotalLinea } from '../adjudicacion/lineas.util';
 
 @Injectable()
 export class OfertasService {
@@ -31,7 +33,10 @@ export class OfertasService {
     if (!req) throw new NotFoundException('Requerimiento no encontrado.');
     return this.prisma.oferta.findMany({
       where: { requerimientoId },
-      include: { proveedor: true },
+      include: {
+        proveedor: true,
+        items: { select: { itemId: true, precioUnitario: true } },
+      },
     });
   }
 
@@ -106,10 +111,32 @@ export class OfertasService {
 
   async mine(userId: string, requerimientoId: string) {
     const proveedorId = await this.proveedores.findIdForUser(userId);
-    const oferta = await this.prisma.oferta.findUnique({
-      where: { requerimientoId_proveedorId: { requerimientoId, proveedorId } },
-    });
-    if (oferta) return oferta;
+    const [oferta, invitado] = await Promise.all([
+      this.prisma.oferta.findUnique({
+        where: { requerimientoId_proveedorId: { requerimientoId, proveedorId } },
+        include: { items: { select: { itemId: true, precioUnitario: true } } },
+      }),
+      this.prisma.invitacion.findFirst({
+        where: { requerimientoId, proveedorId, enviada: true },
+        select: { id: true },
+      }),
+    ]);
+    // The bill of quantities to price, for invited proveedores only.
+    const lineas =
+      invitado || oferta
+        ? await this.prisma.itemRequerimiento.findMany({
+            where: { requerimientoId },
+            orderBy: { orden: 'asc' },
+            select: {
+              id: true,
+              descripcion: true,
+              cantidad: true,
+              unidad: true,
+              especificacion: true,
+            },
+          })
+        : [];
+    if (oferta) return { ...oferta, lineas };
     // No Prisma record yet — return an explicit empty shape rather than null,
     // since NestJS sends a null/undefined response body as empty (Content-Length: 0),
     // which the frontend's `data ?? fallback` can't distinguish from a parse failure.
@@ -121,6 +148,8 @@ export class OfertasService {
       garantiaMeses: 0,
       vigenciaOfertaDias: 0,
       enviada: false,
+      items: [],
+      lineas,
     };
   }
 
@@ -170,15 +199,59 @@ export class OfertasService {
         'Esta oferta ya fue enviada y no es editable.',
       );
     }
-    return this.prisma.oferta.upsert({
-      where: {
-        requerimientoId_proveedorId: {
-          requerimientoId: dto.requerimientoId,
-          proveedorId,
+    const { items: precios, ...campos } = dto;
+    const lineas = await this.prisma.itemRequerimiento.findMany({
+      where: { requerimientoId: dto.requerimientoId },
+      select: { id: true, cantidad: true },
+    });
+    let data = campos;
+    if (lineas.length > 0) {
+      // Itemized: the total is the sum of the quoted lines, never the browser's.
+      const cantidadDe = new Map(lineas.map((l) => [l.id, l.cantidad]));
+      const vistos = new Set<string>();
+      for (const p of precios ?? []) {
+        if (!cantidadDe.has(p.itemId) || vistos.has(p.itemId)) {
+          throw new BadRequestException('Hay líneas inválidas en la oferta.');
+        }
+        vistos.add(p.itemId);
+      }
+      if (!precios?.length) {
+        throw new BadRequestException('Cotiza al menos un ítem.');
+      }
+      data = {
+        ...campos,
+        precioUnitario: 0,
+        precioTotal: precios.reduce(
+          (s, p) =>
+            s + subtotalLinea(cantidadDe.get(p.itemId)!, p.precioUnitario),
+          0,
+        ),
+      };
+    } else if (precios?.length) {
+      throw new BadRequestException('Este requerimiento no tiene ítems.');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const oferta = await tx.oferta.upsert({
+        where: {
+          requerimientoId_proveedorId: {
+            requerimientoId: dto.requerimientoId,
+            proveedorId,
+          },
         },
-      },
-      create: { ...dto, proveedorId },
-      update: { ...dto },
+        create: { ...data, proveedorId },
+        update: { ...data },
+      });
+      if (lineas.length > 0) {
+        await tx.itemOferta.deleteMany({ where: { ofertaId: oferta.id } });
+        await tx.itemOferta.createMany({
+          data: precios!.map((p) => ({
+            ofertaId: oferta.id,
+            itemId: p.itemId,
+            precioUnitario: p.precioUnitario,
+          })),
+        });
+      }
+      return oferta;
     });
   }
 
@@ -222,7 +295,7 @@ export class OfertasService {
         requerimiento: {
           include: {
             company: true,
-            adjudicacion: true,
+            adjudicaciones: true,
             ofertas: {
               where: { enviada: true },
               select: { proveedorId: true, precioTotal: true },
@@ -237,16 +310,16 @@ export class OfertasService {
     });
 
     const procesos = misOfertas.map((o) => {
-      const adj = o.requerimiento.adjudicacion;
-      let resultado: 'ganado' | 'perdido' | 'pendiente' | 'seleccionado' =
-        'pendiente';
+      const { resultado, mia, parcial, precioComparable } = resultadoProveedor(
+        o.requerimiento.adjudicaciones,
+        proveedorId,
+      );
       let feedback: string | undefined;
-      if (adj?.firmado) {
-        resultado = adj.proveedorId === proveedorId ? 'ganado' : 'perdido';
-        if (resultado === 'perdido') {
-          // Specific feedback only when the buyer opted in; the winner's name
-          // and other bids are never disclosed either way.
-          const c = o.requerimiento.company.feedbackCompetitivo
+      if (resultado === 'perdido') {
+        // Specific feedback only when the buyer opted in; the winner's name
+        // and other bids are never disclosed either way.
+        const c =
+          o.requerimiento.company.feedbackCompetitivo && precioComparable
             ? calcularCompetencia(
                 o.requerimiento.ofertas.map((x) => ({
                   proveedorId: x.proveedorId,
@@ -257,18 +330,16 @@ export class OfertasService {
                   precio: p.monto,
                 })),
                 proveedorId,
-                adj.precioFinal,
+                precioComparable,
               )
             : null;
-          feedback = c
-            ? `Quedaste ${c.posicion}° de ${c.participantes} por precio; tu precio final estuvo ${(c.brechaPct * 100).toLocaleString('es-CO', { maximumFractionDigits: 1 })}% ${c.brechaPct >= 0 ? 'por encima' : 'por debajo'} del adjudicado. La decisión también pondera plazo, calidad y condiciones de pago.`
+        feedback = c
+          ? `Quedaste ${c.posicion}° de ${c.participantes} por precio; tu precio final estuvo ${(c.brechaPct * 100).toLocaleString('es-CO', { maximumFractionDigits: 1 })}% ${c.brechaPct >= 0 ? 'por encima' : 'por debajo'} del adjudicado. La decisión también pondera plazo, calidad y condiciones de pago.`
+          : parcial
+            ? 'El proceso se adjudicó por ítems a otros proveedores con mejor precio por línea.'
             : 'El proceso fue adjudicado a otro proveedor con mejor relación precio-calidad.';
-        }
-      } else if (adj?.confirmada && adj.proveedorId === proveedorId) {
-        // Chosen, but the contract/PO hasn't been signed yet — a real interim
-        // state, not just "pendiente" like every other unresolved process.
-        resultado = 'seleccionado';
       }
+      const adj = mia;
       const awardTerms =
         (resultado === 'seleccionado' || resultado === 'ganado') && adj
           ? {
@@ -277,6 +348,7 @@ export class OfertasService {
               plazoDias: adj.plazoDias,
               condicionesPagoDias: adj.condicionesPagoDias,
               garantiaMeses: adj.garantiaMeses,
+              adjudicacionParcial: parcial,
             }
           : {};
       return {

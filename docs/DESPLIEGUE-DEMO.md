@@ -29,7 +29,8 @@ funciona sin sus variables.
    defecto, abre una por núcleo × 2 + 1; así el backend no las agota.
 3. **Storage**: si es un proyecto nuevo, crea como **privados** los buckets
    `homologacion-documentos`, `contratos-documentos` y
-   `requerimientos-documentos` (el de `vitrina-proveedores` lo crea el backend).
+   `requerimientos-documentos` (los de `vitrina-proveedores` y `facturas-pagos`
+   los crea el backend al arrancar).
 
 ## 2. Upstash (Redis)
 

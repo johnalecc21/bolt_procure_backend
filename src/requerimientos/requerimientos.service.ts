@@ -199,7 +199,8 @@ export class RequerimientosService {
         solicitante: { select: { nombre: true } },
         comentarios: { orderBy: { createdAt: 'desc' } },
         documentos: true,
-        adjudicacion: true,
+        adjudicaciones: { include: { proveedor: { select: { nombre: true } } } },
+        items: { orderBy: { orden: 'asc' } },
         ofertas: { include: { proveedor: true } },
         invitaciones: {
           where: { enviada: true },
@@ -318,6 +319,17 @@ export class RequerimientosService {
             dto.especificaciones as unknown as Prisma.InputJsonValue,
           estado: EstadoRequerimiento.PENDIENTE_APROBACION,
           prioridad: dto.prioridad,
+          items: dto.items?.length
+            ? {
+                create: dto.items.map((item, orden) => ({
+                  orden,
+                  descripcion: item.descripcion.trim(),
+                  cantidad: item.cantidad,
+                  unidad: item.unidad.trim(),
+                  especificacion: item.especificacion?.trim() || null,
+                })),
+              }
+            : undefined,
         },
       });
       const creada = await this.crearAprobacion(
@@ -521,6 +533,22 @@ export class RequerimientosService {
           estado: EstadoRequerimiento.PENDIENTE_APROBACION,
         },
       });
+      // Still a draft with no offers, so the lines can be replaced wholesale.
+      if (dto.items) {
+        await tx.itemRequerimiento.deleteMany({ where: { requerimientoId: id } });
+        if (dto.items.length) {
+          await tx.itemRequerimiento.createMany({
+            data: dto.items.map((item, orden) => ({
+              requerimientoId: id,
+              orden,
+              descripcion: item.descripcion.trim(),
+              cantidad: item.cantidad,
+              unidad: item.unidad.trim(),
+              especificacion: item.especificacion?.trim() || null,
+            })),
+          });
+        }
+      }
       await tx.invitacion.updateMany({
         where: { requerimientoId: id, enviada: false },
         data: { fechaLimite },

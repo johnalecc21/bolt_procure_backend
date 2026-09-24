@@ -153,7 +153,7 @@ export class SubastaService {
       select: {
         estado: true,
         fechaLimite: true,
-        adjudicacion: { select: { id: true } },
+        _count: { select: { adjudicaciones: true } },
       },
     });
     const estadosPermitidos: EstadoRequerimiento[] = [
@@ -163,7 +163,7 @@ export class SubastaService {
     if (
       !requerimiento ||
       !estadosPermitidos.includes(requerimiento.estado) ||
-      requerimiento.adjudicacion
+      requerimiento._count.adjudicaciones > 0
     ) {
       throw new BadRequestException(
         'Solo se puede negociar un proceso en licitación que aún no esté adjudicado.',

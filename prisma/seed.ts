@@ -265,7 +265,7 @@ async function main() {
     });
   }
   await prisma.adjudicacion.upsert({
-    where: { requerimientoId: 'RFP-2024-0030' },
+    where: { requerimientoId_proveedorId: { requerimientoId: 'RFP-2024-0030', proveedorId: 'P-003' } },
     update: {},
     create: {
       requerimientoId: 'RFP-2024-0030', proveedorId: 'P-003', precioFinal: 64000,
@@ -293,6 +293,7 @@ async function main() {
       create: {
         ...c,
         requerimientoId: c.id === 'CTO-2024-0040' ? 'RFP-2024-0030' : undefined,
+        proveedorId: (await prisma.proveedorProfile.findFirst({ where: { nombre: c.proveedorNombre }, select: { id: true } }))?.id,
         vigenciaInicio: new Date(c.vigenciaInicio),
         vigenciaFin: new Date(c.vigenciaFin),
       },

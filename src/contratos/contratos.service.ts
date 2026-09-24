@@ -12,6 +12,36 @@ import { PlanesService } from '../planes/planes.service';
 import { paginate } from '../common/dto/pagination.dto';
 const BUCKET = 'contratos-documentos';
 
+// Guarantee and delivery terms come from the award that produced the
+// contract — a PO under a Contrato Marco inherits its padre's.
+const CONDICIONES = { select: { garantiaMeses: true, plazoDias: true } } as const;
+const CONDICIONES_ADJUDICADAS = {
+  adjudicacion: CONDICIONES,
+  padre: {
+    select: { id: true, monto: true, vigenciaFin: true, adjudicacion: CONDICIONES },
+  },
+} as const;
+
+type CondicionesAdjudicadas = { garantiaMeses: number; plazoDias: number } | null;
+
+/** Keeps the response shape the screens read: requerimiento.adjudicacion. */
+function conCondiciones<
+  T extends {
+    requerimiento: { titulo: string; descripcion: string | null } | null;
+    adjudicacion: CondicionesAdjudicadas;
+    padre: { adjudicacion: CondicionesAdjudicadas } | null;
+  },
+>(contrato: T) {
+  const { adjudicacion, ...resto } = contrato;
+  const condiciones = adjudicacion ?? contrato.padre?.adjudicacion ?? null;
+  return {
+    ...resto,
+    requerimiento: contrato.requerimiento
+      ? { ...contrato.requerimiento, adjudicacion: condiciones }
+      : null,
+  };
+}
+
 @Injectable()
 export class ContratosService {
   constructor(
@@ -91,19 +121,13 @@ export class ContratosService {
       include: {
         hitos: { orderBy: { orden: 'asc' } },
         hijas: { select: { id: true, monto: true, estado: true, vigenciaInicio: true, vigenciaFin: true } },
-        padre: { select: { id: true, monto: true, vigenciaFin: true } },
         company: { select: { nombre: true } },
-        requerimiento: {
-          select: {
-            titulo: true,
-            descripcion: true,
-            adjudicacion: { select: { garantiaMeses: true, plazoDias: true } },
-          },
-        },
+        requerimiento: { select: { titulo: true, descripcion: true } },
+        ...CONDICIONES_ADJUDICADAS,
       },
     });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
-    return contrato;
+    return conCondiciones(contrato);
   }
 
   // Only under a Contrato Marco — the whole point of the master agreement is
@@ -119,6 +143,7 @@ export class ContratosService {
         companyId,
         requerimientoId: padre.requerimientoId,
         tipo: TipoContrato.PO,
+        proveedorId: padre.proveedorId,
         proveedorNombre: padre.proveedorNombre,
         categoria: padre.categoria,
         monto: dto.monto,
@@ -142,7 +167,7 @@ export class ContratosService {
   async listMine(userId: string) {
     const proveedorId = await this.proveedores.findIdForUser(userId);
     return this.prisma.contrato.findMany({
-      where: { requerimiento: { adjudicacion: { proveedorId } } },
+      where: { proveedorId },
       orderBy: { vigenciaFin: 'asc' },
       include: { hitos: { orderBy: { orden: 'asc' } }, company: true },
       take: 200,
@@ -152,21 +177,16 @@ export class ContratosService {
   async findOneMine(userId: string, id: string) {
     const proveedorId = await this.proveedores.findIdForUser(userId);
     const contrato = await this.prisma.contrato.findFirst({
-      where: { id, requerimiento: { adjudicacion: { proveedorId } } },
+      where: { id, proveedorId },
       include: {
         hitos: { orderBy: { orden: 'asc' } },
         company: true,
-        requerimiento: {
-          select: {
-            titulo: true,
-            descripcion: true,
-            adjudicacion: { select: { garantiaMeses: true, plazoDias: true } },
-          },
-        },
+        requerimiento: { select: { titulo: true, descripcion: true } },
+        ...CONDICIONES_ADJUDICADAS,
       },
     });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
-    return contrato;
+    return conCondiciones(contrato);
   }
 
   // Only the company that owns the contrato can attach their own PO/contract
@@ -214,7 +234,7 @@ export class ContratosService {
     const contrato =
       portal === Portal.PROVEEDOR
         ? await this.prisma.contrato.findFirst({
-            where: { id, requerimiento: { adjudicacion: { proveedorId: await this.proveedores.findIdForUser(companyIdOrUserId) } } },
+            where: { id, proveedorId: await this.proveedores.findIdForUser(companyIdOrUserId) },
           })
         : await this.prisma.contrato.findFirst({ where: { id, companyId: companyIdOrUserId } });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
