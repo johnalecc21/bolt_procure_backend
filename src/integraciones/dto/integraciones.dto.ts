@@ -4,10 +4,12 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsISO8601,
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   MinLength,
@@ -19,6 +21,68 @@ import {
   TipoEventoErp,
   TipoMapeoErp,
 } from '@prisma/client';
+
+/** Siigo settings; null clears an optional id. */
+export class ConfigSiigoDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  usuario?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  documentoCompraId?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  formaPagoCompraId?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{0,20}$/, { message: 'La cuenta contable debe ser numérica.' })
+  cuentaDefecto?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  impuestoId?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  documentoEgresoId?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  formaPagoEgresoId?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  descuentoProntoPagoId?: number | null;
+
+  @IsOptional()
+  @Matches(/^\d{1,2}$/, { message: 'Código DANE de departamento inválido.' })
+  departamento?: string;
+
+  @IsOptional()
+  @Matches(/^\d{5}$/, {
+    message: 'Código DANE de ciudad inválido (5 dígitos).',
+  })
+  ciudad?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  responsabilidadFiscal?: string;
+
+  @IsOptional()
+  @IsIn(['PROCUREX', 'SIIGO'])
+  pagosDesde?: 'PROCUREX' | 'SIIGO';
+}
 
 export class ActualizarIntegracionDto {
   @IsOptional()
@@ -44,6 +108,17 @@ export class ActualizarIntegracionDto {
   @IsArray()
   @IsEnum(TipoEventoErp, { each: true })
   eventos?: TipoEventoErp[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ConfigSiigoDto)
+  siigo?: ConfigSiigoDto;
+
+  /** Write-only; "" clears it. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  siigoAccessKey?: string;
 }
 
 export class MapeoDto {

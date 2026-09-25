@@ -19,6 +19,9 @@ import { CuentasPorPagarService } from '../pagos/cuentas-por-pagar.service';
 import { ErpEventosService } from './erp-eventos.service';
 import { ErpEnvioService } from './erp-envio.service';
 import { agregar, hojasVacias, type HojasErp } from './erp.filas';
+import { SiigoService } from './siigo/siigo.service';
+import { SiigoCliente } from './siigo/siigo.cliente';
+import { TIPOS_SIIGO, configSiigo, faltantesSiigo } from './siigo/siigo.reglas';
 import {
   cifrar,
   hashApiKey,
@@ -44,6 +47,7 @@ export class IntegracionesService {
     private eventos: ErpEventosService,
     private envio: ErpEnvioService,
     private cxp: CuentasPorPagarService,
+    private siigo: SiigoService,
   ) {}
 
   // ---------------------------------------------------------- configuración
@@ -75,6 +79,12 @@ export class IntegracionesService {
       ultimaPrueba: i.ultimaPrueba,
       ultimaPruebaOk: i.ultimaPruebaOk,
       ultimaPruebaMsg: i.ultimaPruebaMsg,
+      siigo: configSiigo(i.conectorConfig),
+      siigoTieneCredencial: !!i.conectorCredencial,
+      siigoFaltantes: faltantesSiigo(
+        configSiigo(i.conectorConfig),
+        !!i.conectorCredencial,
+      ),
       conteo: Object.fromEntries(conteo.map((c) => [c.estado, c._count])),
     };
   }
@@ -97,6 +107,26 @@ export class IntegracionesService {
       }
       data.webhookUrl = url || null;
     }
+    let configSiigoFinal = configSiigo(actual.conectorConfig);
+    if (dto.siigo) {
+      const limpio = Object.fromEntries(
+        Object.entries(dto.siigo).filter(([, v]) => v !== undefined),
+      );
+      configSiigoFinal = { ...configSiigoFinal, ...limpio };
+      if (configSiigoFinal.usuario)
+        configSiigoFinal.usuario = configSiigoFinal.usuario.trim();
+      data.conectorConfig = configSiigoFinal as Prisma.InputJsonValue;
+    }
+    let tieneCredencial = !!actual.conectorCredencial;
+    if (dto.siigoAccessKey !== undefined) {
+      const key = dto.siigoAccessKey.trim();
+      data.conectorCredencial = key
+        ? cifrar(key, this.envio.claveSecretos)
+        : null;
+      tieneCredencial = !!key;
+    }
+    if (dto.siigo || dto.siigoAccessKey !== undefined)
+      SiigoCliente.olvidar(companyId);
     const modo = dto.modo ?? actual.modo;
     const url =
       dto.webhookUrl !== undefined ? dto.webhookUrl.trim() : actual.webhookUrl;
@@ -105,7 +135,17 @@ export class IntegracionesService {
         throw new BadRequestException(
           'Para activar el envío por webhook configura la URL y genera el secreto de firma.',
         );
+      if (modo === ModoIntegracion.SIIGO) {
+        const faltan = faltantesSiigo(configSiigoFinal, tieneCredencial);
+        if (faltan.length)
+          throw new BadRequestException(
+            `Para activar Siigo falta: ${faltan.join(', ')}.`,
+          );
+      }
     }
+    // Only what Siigo can receive is queued.
+    if (modo === ModoIntegracion.SIIGO && dto.eventos)
+      data.eventos = dto.eventos.filter((t) => TIPOS_SIIGO.includes(t));
     if (dto.activa !== undefined) data.activa = dto.activa;
     await this.prisma.integracionErp.update({ where: { companyId }, data });
     await this.auditLog.log({
@@ -121,6 +161,10 @@ export class IntegracionesService {
             : null,
           dto.modo ? `modo ${dto.modo}` : null,
           dto.webhookUrl !== undefined ? 'URL del webhook cambiada' : null,
+          dto.siigo ? 'configuración de Siigo' : null,
+          dto.siigoAccessKey !== undefined
+            ? 'access key de Siigo cambiada'
+            : null,
           dto.eventos ? `eventos: ${dto.eventos.join(', ') || 'todos'}` : null,
         ]
           .filter(Boolean)
@@ -167,6 +211,18 @@ export class IntegracionesService {
   /** Sends a signed "PRUEBA" event right away and reports the answer. */
   async probar(companyId: string) {
     const i = await this.integracion(companyId);
+    if (i.modo === ModoIntegracion.SIIGO) {
+      const r = await this.siigo.probar(i);
+      await this.prisma.integracionErp.update({
+        where: { companyId },
+        data: {
+          ultimaPrueba: new Date(),
+          ultimaPruebaOk: r.ok,
+          ultimaPruebaMsg: r.mensaje,
+        },
+      });
+      return r;
+    }
     const company = await this.prisma.company.findUniqueOrThrow({
       where: { id: companyId },
       select: { nombre: true },
@@ -227,6 +283,7 @@ export class IntegracionesService {
           proximoIntento: true,
           ultimoError: true,
           idExterno: true,
+          referenciaExterna: true,
           enviadoAt: true,
           updatedAt: true,
         },
@@ -254,7 +311,7 @@ export class IntegracionesService {
     const e = await this.verEvento(companyId, id);
     await this.eventos.emitir(companyId, e.tipo, e.entidadId);
     const i = await this.integracion(companyId);
-    if (i.modo === ModoIntegracion.WEBHOOK)
+    if (i.modo !== ModoIntegracion.ARCHIVO)
       await this.envio.procesar(companyId);
     return this.verEvento(companyId, id);
   }
@@ -568,9 +625,59 @@ export class IntegracionesService {
         tipo: true,
         estado: true,
         idExterno: true,
+        referenciaExterna: true,
         ultimoError: true,
         enviadoAt: true,
       },
     });
+  }
+
+  // ------------------------------------------------------------------ Siigo
+
+  private async integracionSiigo(companyId: string) {
+    const i = await this.integracion(companyId);
+    const c = configSiigo(i.conectorConfig);
+    if (!c.usuario || !i.conectorCredencial)
+      throw new BadRequestException(
+        'Guarda primero el usuario y la access key de Siigo.',
+      );
+    return i;
+  }
+
+  async catalogosSiigo(companyId: string) {
+    const i = await this.integracionSiigo(companyId);
+    try {
+      return await this.siigo.catalogos(i);
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  /** Reads balances in Siigo now instead of waiting for the 10-minute run. */
+  async sincronizarPagosSiigo(companyId: string, actor: string) {
+    const i = await this.integracionSiigo(companyId);
+    if (i.modo !== ModoIntegracion.SIIGO || !i.activa)
+      throw new BadRequestException('La integración con Siigo no está activa.');
+    if (configSiigo(i.conectorConfig).pagosDesde !== 'SIIGO')
+      throw new BadRequestException(
+        'Los pagos se registran en Procurex y se envían a Siigo.',
+      );
+    let r: Awaited<ReturnType<SiigoService['sincronizarPagos']>>;
+    try {
+      r = await this.siigo.sincronizarPagos(i);
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+    await this.auditLog.log({
+      companyId,
+      usuario: actor,
+      accion: 'Pagos leídos desde Siigo',
+      detalle: `${r.revisadas} factura(s) revisadas, ${r.pagadas} pagada(s)`,
+    });
+    return r;
   }
 }

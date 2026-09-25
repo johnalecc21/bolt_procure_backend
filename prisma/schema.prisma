@@ -1231,6 +1231,9 @@ enum ModoIntegracion {
   ARCHIVO
   /// Events are POSTed (signed) to the company's endpoint or middleware.
   WEBHOOK
+  /// Native connector: suppliers, purchase invoices and payments are created
+  /// directly in Siigo Nube through its public API.
+  SIIGO
 }
 
 enum TipoEventoErp {
@@ -1255,25 +1258,29 @@ enum TipoMapeoErp {
 }
 
 model IntegracionErp {
-  id              String          @id @default(cuid())
-  companyId       String          @unique
-  activa          Boolean         @default(false)
-  modo            ModoIntegracion @default(ARCHIVO)
+  id                 String          @id @default(cuid())
+  companyId          String          @unique
+  activa             Boolean         @default(false)
+  modo               ModoIntegracion @default(ARCHIVO)
   /// Free label of the ERP ("Siigo", "SAP B1"…), for the screens only.
-  sistema         String?
-  webhookUrl      String?
+  sistema            String?
+  webhookUrl         String?
   /// HMAC signing secret, encrypted at rest (AES-256-GCM).
-  secretoCifrado  String?
+  secretoCifrado     String?
   /// SHA-256 of the API key the ERP uses to report payments back.
-  apiKeyHash      String?
-  apiKeyPrefijo   String?
+  apiKeyHash         String?
+  apiKeyPrefijo      String?
   /// Which event types are queued (empty = all).
-  eventos         TipoEventoErp[] @default([])
-  ultimaPrueba    DateTime?
-  ultimaPruebaOk  Boolean?
-  ultimaPruebaMsg String?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  eventos            TipoEventoErp[] @default([])
+  ultimaPrueba       DateTime?
+  ultimaPruebaOk     Boolean?
+  ultimaPruebaMsg    String?
+  /// Native connector settings (Siigo: user, document types, accounts…).
+  conectorConfig     Json?
+  /// Native connector access key, encrypted at rest (AES-256-GCM).
+  conectorCredencial String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -1298,23 +1305,25 @@ model MapeoErp {
 /// snapshot. A change re-queues it with a higher version; the receiver
 /// upserts by (tipo, entidadId), so redeliveries are harmless.
 model EventoErp {
-  id             String          @id @default(cuid())
-  companyId      String
-  tipo           TipoEventoErp
-  entidadId      String
+  id                String          @id @default(cuid())
+  companyId         String
+  tipo              TipoEventoErp
+  entidadId         String
   /// Human code shown in the screens (PO-0012, factura FE-10…).
-  referencia     String
-  version        Int             @default(1)
-  payload        Json
-  estado         EstadoEventoErp @default(PENDIENTE)
-  intentos       Int             @default(0)
-  proximoIntento DateTime        @default(now())
-  ultimoError    String?
+  referencia        String
+  version           Int             @default(1)
+  payload           Json
+  estado            EstadoEventoErp @default(PENDIENTE)
+  intentos          Int             @default(0)
+  proximoIntento    DateTime        @default(now())
+  ultimoError       String?
   /// Id the ERP answered with (e.g. its purchase-order number).
-  idExterno      String?
-  enviadoAt      DateTime?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  idExterno         String?
+  /// Human number in the ERP (Siigo "FC-1-73", "RP-2-10"…).
+  referenciaExterna String?
+  enviadoAt         DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 

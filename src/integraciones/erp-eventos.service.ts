@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   EstadoContrato,
   EstadoEventoErp,
+  ModoIntegracion,
   Prisma,
   TipoEventoErp,
   TipoMapeoErp,
@@ -11,6 +12,7 @@ import {
   formatContratoCodigo,
   formatRequerimientoCodigo,
 } from '../common/utils/codigo.util';
+import { TIPOS_SIIGO, configSiigo } from './siigo/siigo.reglas';
 
 const fecha = (d: Date | null | undefined) =>
   d ? d.toISOString().slice(0, 10) : null;
@@ -299,6 +301,16 @@ export class ErpEventosService {
       if (!integracion?.activa) return;
       if (integracion.eventos.length && !integracion.eventos.includes(tipo))
         return;
+      if (integracion.modo === ModoIntegracion.SIIGO) {
+        // Siigo has no purchase-order API, and payments made in Siigo are
+        // read back instead of sent.
+        if (!TIPOS_SIIGO.includes(tipo)) return;
+        if (
+          tipo === TipoEventoErp.PAGO &&
+          configSiigo(integracion.conectorConfig).pagosDesde === 'SIIGO'
+        )
+          return;
+      }
       const mapeos = await this.mapeos(companyId);
       const snap = await this.snapshot(tipo, entidadId, mapeos);
       if (!snap) return;

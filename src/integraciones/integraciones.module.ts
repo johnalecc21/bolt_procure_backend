@@ -7,10 +7,11 @@ import {
 } from './integraciones.controller';
 import { IntegracionesService } from './integraciones.service';
 import { ErpEnvioService } from './erp-envio.service';
+import { SiigoService } from './siigo/siigo.service';
 
 @Module({
   imports: [AuditLogModule, PagosModule],
   controllers: [IntegracionesController, ErpEntradaController],
-  providers: [IntegracionesService, ErpEnvioService],
+  providers: [IntegracionesService, ErpEnvioService, SiigoService],
 })
 export class IntegracionesModule {}

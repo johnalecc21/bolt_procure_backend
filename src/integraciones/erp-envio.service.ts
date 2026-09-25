@@ -10,6 +10,7 @@ import {
 import type { Redis } from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { SiigoService } from './siigo/siigo.service';
 import {
   claveCifrado,
   descifrar,
@@ -36,6 +37,7 @@ export interface ResultadoEnvio {
   ok: boolean;
   status?: number;
   idExterno?: string | null;
+  referenciaExterna?: string | null;
   error?: string;
 }
 
@@ -54,6 +56,7 @@ export class ErpEnvioService {
     private prisma: PrismaService,
     config: ConfigService,
     @Inject(REDIS_CLIENT) private redis: Redis,
+    private siigo: SiigoService,
   ) {
     this.clave = claveCifrado(
       config.get<string>('INTEGRACIONES_SECRET') ||
@@ -93,7 +96,10 @@ export class ErpEnvioService {
         proximoIntento: { lte: new Date() },
         ...(companyId ? { companyId } : {}),
         company: {
-          integracionErp: { activa: true, modo: ModoIntegracion.WEBHOOK },
+          integracionErp: {
+            activa: true,
+            modo: { in: [ModoIntegracion.WEBHOOK, ModoIntegracion.SIIGO] },
+          },
         },
       },
       // Suppliers before the orders that reference them, then oldest first.
@@ -106,7 +112,10 @@ export class ErpEnvioService {
     let enviados = 0;
     for (const e of eventos) {
       const integ = e.company.integracionErp!;
-      const r = await this.enviar(integ, e, e.company.nombre);
+      const r =
+        integ.modo === ModoIntegracion.SIIGO
+          ? await this.siigo.enviar(integ, e)
+          : await this.enviar(integ, e, e.company.nombre);
       await this.registrarResultado(e, r);
       if (r.ok) enviados++;
     }
@@ -222,6 +231,9 @@ export class ErpEnvioService {
           enviadoAt: new Date(),
           ultimoError: null,
           ...(r.idExterno ? { idExterno: r.idExterno } : {}),
+          ...(r.referenciaExterna
+            ? { referenciaExterna: r.referenciaExterna.slice(0, 200) }
+            : {}),
         },
       });
       return;

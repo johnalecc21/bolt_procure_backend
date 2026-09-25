@@ -71,6 +71,18 @@ export class IntegracionesController {
   }
 
   @Roles(...FINANZAS)
+  @Get('erp/siigo/catalogos')
+  catalogosSiigo(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.catalogosSiigo(user.companyId);
+  }
+
+  @Roles(...FINANZAS)
+  @Post('erp/siigo/sincronizar-pagos')
+  sincronizarPagosSiigo(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.sincronizarPagosSiigo(user.companyId, user.email);
+  }
+
+  @Roles(...FINANZAS)
   @Get('erp/eventos')
   eventos(
     @CurrentUser() user: AuthenticatedUser,

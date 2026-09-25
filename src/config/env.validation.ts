@@ -52,4 +52,9 @@ export const envValidationSchema = Joi.object({
   // Encrypts the ERP webhook secrets at rest. Falls back to a key derived from
   // SUPABASE_SERVICE_ROLE_KEY; set it to rotate that independently.
   INTEGRACIONES_SECRET: Joi.string().min(16).allow('').optional(),
+
+  // Siigo Nube connector. The URL only changes for a sandbox or tests; the
+  // Partner-Id is the integrating application's name Siigo asks for.
+  SIIGO_API_URL: Joi.string().uri().allow('').optional(),
+  SIIGO_PARTNER_ID: Joi.string().max(100).allow('').optional(),
 }).unknown(true);
