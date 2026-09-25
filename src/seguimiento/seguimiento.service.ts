@@ -11,6 +11,7 @@ import {
   HitoSeguimiento,
   Role,
   TipoContrato,
+  TipoEventoErp,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -22,6 +23,7 @@ import {
 import { CreateHitoDto } from './dto/create-hito.dto';
 import { UpdateHitoDto } from './dto/update-hito.dto';
 import { formatMonto } from '../common/utils/moneda.util';
+import { ErpEventosService } from '../integraciones/erp-eventos.service';
 import {
   esMarco,
   estadoHitoAutomatico,
@@ -40,6 +42,7 @@ export class SeguimientoService {
     private prisma: PrismaService,
     private auditLog: AuditLogService,
     private notificaciones: NotificacionesService,
+    private erp: ErpEventosService,
   ) {}
 
   async list(companyId: string) {
@@ -222,6 +225,9 @@ export class SeguimientoService {
       }
     }
 
+    // The ERP records the goods/service receipt (and the payment it released).
+    if (pasaACompletado)
+      await this.erp.emitir(companyId, TipoEventoErp.RECEPCION, hitoId);
     if (hito.contrato.requerimientoId)
       await this.cerrarSiCompleto(
         companyId,

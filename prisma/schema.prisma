@@ -254,6 +254,9 @@ model Company {
   // Default 10 years — Colombian commercial books (Código de Comercio art. 60).
   retencionAuditoriaMeses          Int                  @default(120)
 
+  integracionErp    IntegracionErp?
+  mapeosErp         MapeoErp[]
+  eventosErp        EventoErp[]
   memberships       CompanyMembership[]
   requerimientos    Requerimiento[]
   contratos         Contrato[]
@@ -467,6 +470,8 @@ model ProveedorProfile {
   score                Int      @default(0)
   ubicacion            String
   sitioWeb             String?
+  // Tax id (NIT/RUT/RFC…) — how the buyer's ERP identifies the supplier.
+  nit                  String?
   certificaciones      String[]
   procesosGanados      Int      @default(0)
   entregasATiempo      Int      @default(0)
@@ -1215,4 +1220,106 @@ model GraficaGuardada {
 
   @@index([userId, companyId])
   @@map("graficas_guardadas")
+}
+
+// ---------------------------------------------------------------------------
+// Integración con ERP (cualquier sistema: archivo o webhook firmado)
+// ---------------------------------------------------------------------------
+
+enum ModoIntegracion {
+  /// Events queue up and are downloaded as a file to import into the ERP.
+  ARCHIVO
+  /// Events are POSTed (signed) to the company's endpoint or middleware.
+  WEBHOOK
+}
+
+enum TipoEventoErp {
+  PROVEEDOR
+  ORDEN_COMPRA
+  RECEPCION
+  FACTURA
+  PAGO
+}
+
+enum EstadoEventoErp {
+  PENDIENTE
+  ENVIADO
+  ERROR
+  FALLIDO
+  DESCARTADO
+}
+
+enum TipoMapeoErp {
+  CENTRO_COSTO
+  CATEGORIA
+}
+
+model IntegracionErp {
+  id              String          @id @default(cuid())
+  companyId       String          @unique
+  activa          Boolean         @default(false)
+  modo            ModoIntegracion @default(ARCHIVO)
+  /// Free label of the ERP ("Siigo", "SAP B1"…), for the screens only.
+  sistema         String?
+  webhookUrl      String?
+  /// HMAC signing secret, encrypted at rest (AES-256-GCM).
+  secretoCifrado  String?
+  /// SHA-256 of the API key the ERP uses to report payments back.
+  apiKeyHash      String?
+  apiKeyPrefijo   String?
+  /// Which event types are queued (empty = all).
+  eventos         TipoEventoErp[] @default([])
+  ultimaPrueba    DateTime?
+  ultimaPruebaOk  Boolean?
+  ultimaPruebaMsg String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("integraciones_erp")
+}
+
+/// Local value → code in the ERP (cost centers, categories → GL accounts).
+model MapeoErp {
+  id         String       @id @default(cuid())
+  companyId  String
+  tipo       TipoMapeoErp
+  valorLocal String
+  valorErp   String
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, tipo, valorLocal])
+  @@map("mapeos_erp")
+}
+
+/// Outbox: one row per business document and type, holding its latest full
+/// snapshot. A change re-queues it with a higher version; the receiver
+/// upserts by (tipo, entidadId), so redeliveries are harmless.
+model EventoErp {
+  id             String          @id @default(cuid())
+  companyId      String
+  tipo           TipoEventoErp
+  entidadId      String
+  /// Human code shown in the screens (PO-0012, factura FE-10…).
+  referencia     String
+  version        Int             @default(1)
+  payload        Json
+  estado         EstadoEventoErp @default(PENDIENTE)
+  intentos       Int             @default(0)
+  proximoIntento DateTime        @default(now())
+  ultimoError    String?
+  /// Id the ERP answered with (e.g. its purchase-order number).
+  idExterno      String?
+  enviadoAt      DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, tipo, entidadId])
+  @@index([estado, proximoIntento])
+  @@index([companyId, estado])
+  @@map("eventos_erp")
 }

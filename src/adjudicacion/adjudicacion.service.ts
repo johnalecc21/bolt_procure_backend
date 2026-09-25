@@ -22,6 +22,7 @@ import {
   UMBRAL_REVISION_LEGAL,
 } from '../common/utils/moneda.util';
 import { calcularLineas, type LineaCalculada } from './lineas.util';
+import { ErpEventosService } from '../integraciones/erp-eventos.service';
 
 @Injectable()
 export class AdjudicacionService {
@@ -29,6 +30,7 @@ export class AdjudicacionService {
     private prisma: PrismaService,
     private auditLog: AuditLogService,
     private notificaciones: NotificacionesService,
+    private erp: ErpEventosService,
   ) {}
 
   /**
@@ -402,75 +404,79 @@ export class AdjudicacionService {
     const cierre = new Date(entrega);
     cierre.setDate(cierre.getDate() + 5);
 
-    const { completo } = await this.prisma.$transaction(async (tx) => {
-      // Conditional: two simultaneous "firmar" calls can't both create a contract.
-      const { count } = await tx.adjudicacion.updateMany({
-        where: { id: adjudicacion.id, firmado: false },
-        data: { firmado: true, notificarPerdedores },
-      });
-      if (count === 0)
-        throw new ConflictException('Este contrato ya fue firmado.');
-      const contrato = await tx.contrato.create({
-        data: {
-          companyId: requerimiento.companyId,
-          requerimientoId,
-          tipo,
-          proveedorId: proveedor.id,
-          proveedorNombre: proveedor.nombre,
-          categoria: requerimiento.categoria,
-          monto: adjudicacion.precioFinal,
-          moneda: requerimiento.moneda,
-          centroCostoId: requerimiento.centroCostoId,
-          vigenciaInicio: hoy,
-          vigenciaFin,
-          condicionesPagoDias: adjudicacion.condicionesPagoDias,
-        },
-      });
-      await tx.adjudicacion.update({
-        where: { id: adjudicacion.id },
-        data: { contratoId: contrato.id },
-      });
-      // Default 30/40/30 payment split — the client can adjust each hito's
-      // porcentaje afterward from Seguimiento, before marking it completado.
-      // A Contrato Marco gets none: it's a ceiling, paid through the POs
-      // issued against it (each is born with its own delivery milestone).
-      if (tipo === TipoContrato.PO) await tx.hitoSeguimiento.createMany({
-        data: [
-          {
-            contratoId: contrato.id,
-            label: 'Inicio del contrato',
-            comprometido: hoy,
-            orden: 0,
-            porcentaje: 30,
-          },
-          {
-            contratoId: contrato.id,
-            label: 'Entrega',
-            comprometido: entrega,
-            orden: 1,
-            porcentaje: 40,
-          },
-          {
-            contratoId: contrato.id,
-            label: 'Cierre y conformidad',
-            comprometido: cierre,
-            orden: 2,
-            porcentaje: 30,
-          },
-        ],
-      });
-      const pendientes = await tx.adjudicacion.count({
-        where: { requerimientoId, firmado: false },
-      });
-      if (pendientes === 0) {
-        await tx.requerimiento.update({
-          where: { id: requerimientoId },
-          data: { estado: EstadoRequerimiento.EN_CUMPLIMIENTO },
+    const { completo, contratoId } = await this.prisma.$transaction(
+      async (tx) => {
+        // Conditional: two simultaneous "firmar" calls can't both create a contract.
+        const { count } = await tx.adjudicacion.updateMany({
+          where: { id: adjudicacion.id, firmado: false },
+          data: { firmado: true, notificarPerdedores },
         });
-      }
-      return { completo: pendientes === 0 };
-    });
+        if (count === 0)
+          throw new ConflictException('Este contrato ya fue firmado.');
+        const contrato = await tx.contrato.create({
+          data: {
+            companyId: requerimiento.companyId,
+            requerimientoId,
+            tipo,
+            proveedorId: proveedor.id,
+            proveedorNombre: proveedor.nombre,
+            categoria: requerimiento.categoria,
+            monto: adjudicacion.precioFinal,
+            moneda: requerimiento.moneda,
+            centroCostoId: requerimiento.centroCostoId,
+            vigenciaInicio: hoy,
+            vigenciaFin,
+            condicionesPagoDias: adjudicacion.condicionesPagoDias,
+          },
+        });
+        await tx.adjudicacion.update({
+          where: { id: adjudicacion.id },
+          data: { contratoId: contrato.id },
+        });
+        // Default 30/40/30 payment split — the client can adjust each hito's
+        // porcentaje afterward from Seguimiento, before marking it completado.
+        // A Contrato Marco gets none: it's a ceiling, paid through the POs
+        // issued against it (each is born with its own delivery milestone).
+        if (tipo === TipoContrato.PO)
+          await tx.hitoSeguimiento.createMany({
+            data: [
+              {
+                contratoId: contrato.id,
+                label: 'Inicio del contrato',
+                comprometido: hoy,
+                orden: 0,
+                porcentaje: 30,
+              },
+              {
+                contratoId: contrato.id,
+                label: 'Entrega',
+                comprometido: entrega,
+                orden: 1,
+                porcentaje: 40,
+              },
+              {
+                contratoId: contrato.id,
+                label: 'Cierre y conformidad',
+                comprometido: cierre,
+                orden: 2,
+                porcentaje: 30,
+              },
+            ],
+          });
+        const pendientes = await tx.adjudicacion.count({
+          where: { requerimientoId, firmado: false },
+        });
+        if (pendientes === 0) {
+          await tx.requerimiento.update({
+            where: { id: requerimientoId },
+            data: { estado: EstadoRequerimiento.EN_CUMPLIMIENTO },
+          });
+        }
+        return { completo: pendientes === 0, contratoId: contrato.id };
+      },
+    );
 
+    await this.erp.emitirOrden(requerimiento.companyId, contratoId);
     await this.auditLog.log({
       companyId: requerimiento.companyId,
       usuario: actorNombre,

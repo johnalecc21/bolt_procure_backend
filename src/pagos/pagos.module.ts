@@ -10,5 +10,6 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
   imports: [ProveedoresModule, AuditLogModule, NotificacionesModule],
   controllers: [PagosController, CuentasPorPagarController],
   providers: [PagosService, CuentasPorPagarService],
+  exports: [CuentasPorPagarService],
 })
 export class PagosModule {}

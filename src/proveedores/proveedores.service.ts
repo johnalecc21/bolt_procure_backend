@@ -116,6 +116,7 @@ export class ProveedoresService {
         ...(dto.nombre !== undefined ? { nombre: dto.nombre } : {}),
         ...(dto.categorias !== undefined ? { categorias: dto.categorias } : {}),
         ...(dto.ubicacion !== undefined ? { ubicacion: dto.ubicacion } : {}),
+        ...(dto.nit !== undefined ? { nit: dto.nit.trim() || null } : {}),
         ...(dto.sitioWeb !== undefined ? { sitioWeb: dto.sitioWeb.trim() || null } : {}),
         ...(dto.certificaciones !== undefined ? { certificaciones: dto.certificaciones } : {}),
       },

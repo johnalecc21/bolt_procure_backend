@@ -49,4 +49,7 @@ export const envValidationSchema = Joi.object({
   EMAIL_FROM: Joi.string().optional(),
   // Public URL of the frontend, used for links inside emails. Defaults to CORS_ORIGIN.
   APP_URL: Joi.string().uri().optional(),
+  // Encrypts the ERP webhook secrets at rest. Falls back to a key derived from
+  // SUPABASE_SERVICE_ROLE_KEY; set it to rotate that independently.
+  INTEGRACIONES_SECRET: Joi.string().min(16).allow('').optional(),
 }).unknown(true);

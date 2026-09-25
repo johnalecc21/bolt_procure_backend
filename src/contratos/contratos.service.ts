@@ -10,6 +10,7 @@ import {
   Portal,
   Prisma,
   TipoContrato,
+  TipoEventoErp,
   TipoModificacion,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -35,6 +36,7 @@ import { formatMonto } from '../common/utils/moneda.util';
 import { PlanesService } from '../planes/planes.service';
 import { paginate } from '../common/dto/pagination.dto';
 import { estadoEfectivo } from '../pagos/pagos.rules';
+import { ErpEventosService } from '../integraciones/erp-eventos.service';
 import {
   esMarco,
   estadoPorVigencia,
@@ -134,6 +136,7 @@ export class ContratosService {
     private planes: PlanesService,
     private notificaciones: NotificacionesService,
     private seguimiento: SeguimientoService,
+    private erp: ErpEventosService,
   ) {}
 
   /** Server-side paginated list for the Contratos screen. */
@@ -519,6 +522,7 @@ export class ContratosService {
           porcentaje: 100,
         },
       });
+      await this.erp.emitirOrden(companyId, po.id);
       return po;
     });
     const codigo = formatContratoCodigo(po.tipo, po.numero);
@@ -595,6 +599,7 @@ export class ContratosService {
       `${codigo} ahora vence el ${fechaCorta(nueva)}.`,
       id,
     );
+    await this.erp.emitir(companyId, TipoEventoErp.ORDEN_COMPRA, id);
     return this.findOne(companyId, id);
   }
 
@@ -667,6 +672,7 @@ export class ContratosService {
       `${codigo} pasó de ${formatMonto(c.monto, c.moneda)} a ${formatMonto(dto.monto, c.moneda)}: ${dto.motivo.trim()}.`,
       id,
     );
+    await this.erp.emitir(companyId, TipoEventoErp.ORDEN_COMPRA, id);
     return this.findOne(companyId, id);
   }
 
@@ -720,6 +726,7 @@ export class ContratosService {
         c.requerimientoId,
         actorNombre,
       );
+    await this.erp.emitir(companyId, TipoEventoErp.ORDEN_COMPRA, id);
     return this.findOne(companyId, id);
   }
 

@@ -32,6 +32,8 @@ import { ProveedoresModule } from './proveedores/proveedores.module';
 import { HomologacionModule } from './homologacion/homologacion.module';
 import { OfertasModule } from './ofertas/ofertas.module';
 import { AdjudicacionModule } from './adjudicacion/adjudicacion.module';
+import { ErpEventosModule } from './integraciones/erp-eventos.module';
+import { IntegracionesModule } from './integraciones/integraciones.module';
 import { ContratosModule } from './contratos/contratos.module';
 import { SeguimientoModule } from './seguimiento/seguimiento.module';
 import { DisputasModule } from './disputas/disputas.module';
@@ -149,6 +151,8 @@ import { EmailModule } from './email/email.module';
     HomologacionModule,
     OfertasModule,
     AdjudicacionModule,
+    ErpEventosModule,
+    IntegracionesModule,
     ContratosModule,
     SeguimientoModule,
     DisputasModule,

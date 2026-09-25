@@ -1,4 +1,11 @@
-import { IsArray, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsArray,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class UpdatePerfilDto {
   @IsOptional()
@@ -14,6 +21,15 @@ export class UpdatePerfilDto {
   @IsOptional()
   @IsString()
   ubicacion?: string;
+
+  /** Tax id (NIT/RUT/RFC) as the buyers' ERPs know the company. "" clears it. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  @Matches(/^[0-9A-Za-z.\- ]*$/, {
+    message: 'El NIT solo puede tener números, letras, puntos y guiones.',
+  })
+  nit?: string;
 
   @IsOptional()
   @IsString()

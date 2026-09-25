@@ -4,7 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoFactura, EstadoPago, EstadoProntoPago } from '@prisma/client';
+import {
+  EstadoFactura,
+  EstadoPago,
+  EstadoProntoPago,
+  TipoEventoErp,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
@@ -14,6 +19,7 @@ import { formatMonto } from '../common/utils/moneda.util';
 import { FACTURAS_BUCKET } from './pagos.rules';
 import { INCLUDE_PAGO, vistaPago } from './pagos.service';
 import { RegistrarPagoDto } from './dto/pagos.dto';
+import { ErpEventosService } from '../integraciones/erp-eventos.service';
 
 /** Accounts payable for the buyer: review invoices, pay, answer early-payment requests. */
 @Injectable()
@@ -23,6 +29,7 @@ export class CuentasPorPagarService {
     private storage: StorageService,
     private notificaciones: NotificacionesService,
     private auditLog: AuditLogService,
+    private erp: ErpEventosService,
   ) {}
 
   async list(companyId: string) {
@@ -120,6 +127,8 @@ export class CuentasPorPagarService {
         `/proveedor/pagos?pago=${pago.id}`,
       );
     }
+    if (aprobar)
+      await this.erp.emitir(companyId, TipoEventoErp.FACTURA, facturaId);
     return { ok: true };
   }
 
@@ -135,6 +144,7 @@ export class CuentasPorPagarService {
     pagoId: string,
     dto: RegistrarPagoDto,
     actorNombre: string,
+    desdeErp = false,
   ) {
     const pago = await this.pagoDeEmpresa(companyId, pagoId);
     if (!pago.facturas.some((f) => f.estado === EstadoFactura.APROBADA))
@@ -195,6 +205,8 @@ export class CuentasPorPagarService {
         `/proveedor/pagos?pago=${pago.id}`,
       );
     }
+    // A payment reported by the ERP itself isn't echoed back to it.
+    if (!desdeErp) await this.erp.emitir(companyId, TipoEventoErp.PAGO, pagoId);
     return { ok: true };
   }
 

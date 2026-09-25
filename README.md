@@ -9,6 +9,7 @@ API real (NestJS + Prisma + PostgreSQL) para la plataforma ProcureOS. Vive como 
 ## Despliegue
 
 - **Producción (Contabo + Vercel):** [`docs/DESPLIEGUE-CONTABO.md`](docs/DESPLIEGUE-CONTABO.md)
+- **Integración con ERP** (archivo o webhook firmado): [`docs/INTEGRACION-ERP.md`](docs/INTEGRACION-ERP.md)
 - Demo gratis (Render + Vercel): [`docs/DESPLIEGUE-DEMO.md`](docs/DESPLIEGUE-DEMO.md)
 
 ## Stack
