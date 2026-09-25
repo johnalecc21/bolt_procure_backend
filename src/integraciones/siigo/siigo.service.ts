@@ -53,7 +53,6 @@ interface Catalogo {
   type?: string;
   percentage?: number;
   due_date?: boolean;
-  global_discounts?: { id: number; name: string; percentage?: number }[];
 }
 
 type Evento = Pick<
@@ -134,13 +133,6 @@ export class SiigoService {
     return {
       documentosCompra: simple(fc),
       documentosEgreso: simple(rp),
-      descuentosEgreso: activos(rp).flatMap((d) =>
-        (d.global_discounts ?? []).map((g) => ({
-          id: g.id,
-          nombre: `${g.name}${g.percentage ? ` (${g.percentage}%)` : ''}`,
-          documentoId: d.id,
-        })),
-      ),
       formasPagoCompra: activos(pagoFc).map((p) => ({
         id: p.id,
         nombre: p.name,
@@ -429,8 +421,7 @@ export class SiigoService {
         nit: nit.base,
         fechaPago: pago.fechaPago.toISOString().slice(0, 10),
         cuota,
-        valorPagado: pago.montoPagado ?? pago.monto - pago.descuentoProntoPago,
-        descuento: pago.descuentoProntoPago,
+        valorPagado: pago.montoPagado ?? pago.monto,
         referencia: pago.referenciaPago,
         factura: factura.numero,
         c,

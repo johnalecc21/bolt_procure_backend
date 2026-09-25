@@ -10,7 +10,6 @@ import {
   MotivoDto,
   RadicarFacturaDto,
   RegistrarPagoDto,
-  SolicitarProntoPagoDto,
   UploadArchivoDto,
 } from './dto/pagos.dto';
 import type { AuthenticatedUser } from '../auth/types';
@@ -56,29 +55,6 @@ export class PagosController {
   @Get(':id/soporte-url')
   urlSoporte(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.service.urlDescargaSoporte(user.sub, id);
-  }
-
-  @Post(':id/pronto-pago/simular')
-  simular(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-    @Body() dto: SolicitarProntoPagoDto,
-  ) {
-    return this.service.simularProntoPago(user.sub, id, dto.fechaPropuesta);
-  }
-
-  @Post(':id/pronto-pago')
-  solicitar(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-    @Body() dto: SolicitarProntoPagoDto,
-  ) {
-    return this.service.solicitarProntoPago(
-      user.sub,
-      id,
-      dto.fechaPropuesta,
-      user.email,
-    );
   }
 }
 
@@ -161,35 +137,5 @@ export class CuentasPorPagarController {
     @Body() dto: RegistrarPagoDto,
   ) {
     return this.service.registrarPago(user.companyId, pagoId, dto, user.email);
-  }
-
-  @Roles(...PAGAN)
-  @Post('pronto-pago/:solicitudId/aceptar')
-  aceptarProntoPago(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('solicitudId') solicitudId: string,
-  ) {
-    return this.service.responderProntoPago(
-      user.companyId,
-      solicitudId,
-      true,
-      user.email,
-    );
-  }
-
-  @Roles(...PAGAN)
-  @Post('pronto-pago/:solicitudId/rechazar')
-  rechazarProntoPago(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('solicitudId') solicitudId: string,
-    @Body() dto: MotivoDto,
-  ) {
-    return this.service.responderProntoPago(
-      user.companyId,
-      solicitudId,
-      false,
-      user.email,
-      dto.motivo,
-    );
   }
 }

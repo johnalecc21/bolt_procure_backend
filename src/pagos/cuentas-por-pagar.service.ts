@@ -4,12 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  EstadoFactura,
-  EstadoPago,
-  EstadoProntoPago,
-  TipoEventoErp,
-} from '@prisma/client';
+import { EstadoFactura, EstadoPago, TipoEventoErp } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
@@ -159,7 +154,7 @@ export class CuentasPorPagarService {
     const fechaPago = new Date(dto.fechaPago);
     if (fechaPago.getTime() > Date.now() + 86_400_000)
       throw new BadRequestException('La fecha de pago no puede ser futura.');
-    const montoPagado = pago.monto - pago.descuentoProntoPago;
+    const montoPagado = pago.monto;
     const { count } = await this.prisma.pagoPO.updateMany({
       where: { id: pagoId, estado: { not: EstadoPago.PAGADO } },
       data: {
@@ -174,16 +169,6 @@ export class CuentasPorPagarService {
     });
     if (count === 0)
       throw new ConflictException('Este pago ya fue registrado.');
-    // A pending early-payment request is moot once the money went out.
-    await this.prisma.solicitudProntoPago.updateMany({
-      where: { pagoId, estado: EstadoProntoPago.SOLICITADA },
-      data: {
-        estado: EstadoProntoPago.RECHAZADA,
-        motivo: 'El pago se registró antes de responder la solicitud.',
-        respondidaPor: actorNombre,
-        respondidaAt: new Date(),
-      },
-    });
     const contrato = formatContratoCodigo(
       pago.contrato.tipo,
       pago.contrato.numero,
@@ -205,69 +190,6 @@ export class CuentasPorPagarService {
     }
     // A payment reported by the ERP itself isn't echoed back to it.
     if (!desdeErp) await this.erp.emitir(companyId, TipoEventoErp.PAGO, pagoId);
-    return { ok: true };
-  }
-
-  async responderProntoPago(
-    companyId: string,
-    solicitudId: string,
-    aceptar: boolean,
-    actorNombre: string,
-    motivo?: string,
-  ) {
-    const solicitud = await this.prisma.solicitudProntoPago.findFirst({
-      where: { id: solicitudId, pago: { contrato: { companyId } } },
-    });
-    if (!solicitud) throw new NotFoundException('Solicitud no encontrada.');
-    const pago = await this.pagoDeEmpresa(companyId, solicitud.pagoId);
-    if (aceptar && pago.estado === EstadoPago.PAGADO)
-      throw new ConflictException('Este pago ya fue registrado.');
-    await this.prisma.$transaction(async (tx) => {
-      const { count } = await tx.solicitudProntoPago.updateMany({
-        where: { id: solicitudId, estado: EstadoProntoPago.SOLICITADA },
-        data: {
-          estado: aceptar
-            ? EstadoProntoPago.ACEPTADA
-            : EstadoProntoPago.RECHAZADA,
-          motivo: aceptar ? null : motivo,
-          respondidaPor: actorNombre,
-          respondidaAt: new Date(),
-        },
-      });
-      if (count === 0)
-        throw new ConflictException('Esta solicitud ya fue respondida.');
-      if (aceptar) {
-        // The new, earlier date becomes the agreed one, at the net amount.
-        await tx.pagoPO.update({
-          where: { id: pago.id },
-          data: {
-            fechaPagoPactada: solicitud.fechaPropuesta,
-            descuentoProntoPago: pago.monto - solicitud.montoNeto,
-          },
-        });
-      }
-    });
-    const contrato = formatContratoCodigo(
-      pago.contrato.tipo,
-      pago.contrato.numero,
-    );
-    await this.auditLog.log({
-      companyId,
-      usuario: actorNombre,
-      accion: aceptar ? 'Pronto pago aceptado' : 'Pronto pago rechazado',
-      detalle: `${pago.proveedor.nombre} — ${contrato}: ${formatMonto(solicitud.montoNeto, pago.moneda)} el ${solicitud.fechaPropuesta.toISOString().slice(0, 10)}${aceptar ? '' : ` (${motivo})`}`,
-    });
-    if (pago.proveedor.userId) {
-      await this.notificaciones.create(
-        pago.proveedor.userId,
-        'CONTRATO',
-        aceptar ? 'Pronto pago aceptado' : 'Pronto pago rechazado',
-        aceptar
-          ? `Te pagarán ${formatMonto(solicitud.montoNeto, pago.moneda)} el ${solicitud.fechaPropuesta.toISOString().slice(0, 10)} por ${contrato}.`
-          : `Tu solicitud de pronto pago para ${contrato} fue rechazada: ${motivo}. Se mantiene la fecha pactada.`,
-        `/proveedor/pagos?pago=${pago.id}`,
-      );
-    }
     return { ok: true };
   }
 }

@@ -159,12 +159,6 @@ enum EstadoFactura {
   RECHAZADA
 }
 
-enum EstadoProntoPago {
-  SOLICITADA
-  ACEPTADA
-  RECHAZADA
-}
-
 enum PrioridadRequerimiento {
   NORMAL
   ALTA
@@ -834,8 +828,6 @@ model PagoPO {
   fechaEmision        DateTime
   fechaPagoPactada    DateTime
   estado              EstadoPago @default(PENDIENTE)
-  // Early-payment discount agreed through SolicitudProntoPago (0 = none).
-  descuentoProntoPago Int        @default(0)
   // Filled when the buyer registers the payment.
   fechaPago           DateTime?
   montoPagado         Int?
@@ -848,7 +840,6 @@ model PagoPO {
   proveedor             ProveedorProfile      @relation(fields: [proveedorId], references: [id])
   hitoOrigen            HitoSeguimiento?
   facturas              Factura[]
-  solicitudesProntoPago SolicitudProntoPago[]
 
   @@index([proveedorId])
   @@index([contratoId])
@@ -875,26 +866,6 @@ model Factura {
 
   @@index([pagoId])
   @@map("facturas")
-}
-
-/// Proveedor asks to be paid before the agreed date in exchange for a discount;
-/// the buyer accepts (the payment date and net amount change) or declines.
-model SolicitudProntoPago {
-  id             String           @id @default(cuid())
-  pagoId         String
-  fechaPropuesta DateTime
-  descuentoPct   Float
-  montoNeto      Int
-  estado         EstadoProntoPago @default(SOLICITADA)
-  motivo         String?
-  respondidaPor  String?
-  respondidaAt   DateTime?
-  createdAt      DateTime         @default(now())
-
-  pago PagoPO @relation(fields: [pagoId], references: [id], onDelete: Cascade)
-
-  @@index([pagoId])
-  @@map("solicitudes_pronto_pago")
 }
 
 // ---------------------------------------------------------------------------

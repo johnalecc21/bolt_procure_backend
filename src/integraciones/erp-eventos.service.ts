@@ -230,8 +230,7 @@ export class ErpEventosService {
         concepto: f.pago.hitoOrigen?.label ?? null,
         moneda: f.pago.moneda,
         valor: f.monto,
-        descuentoProntoPago: f.pago.descuentoProntoPago,
-        valorAPagar: f.pago.monto - f.pago.descuentoProntoPago,
+        valorAPagar: f.pago.monto,
         centroCostoErp: c.centroCosto
           ? (mapeos.centro.get(c.centroCosto.codigo) ?? null)
           : null,

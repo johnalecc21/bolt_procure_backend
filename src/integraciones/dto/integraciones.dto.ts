@@ -60,11 +60,6 @@ export class ConfigSiigoDto {
   formaPagoEgresoId?: number | null;
 
   @IsOptional()
-  @IsInt()
-  @Min(1)
-  descuentoProntoPagoId?: number | null;
-
-  @IsOptional()
   @Matches(/^\d{1,2}$/, { message: 'Código DANE de departamento inválido.' })
   departamento?: string;
 

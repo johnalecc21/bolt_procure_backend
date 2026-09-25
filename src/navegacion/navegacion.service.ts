@@ -7,7 +7,6 @@ import {
   EstadoHomologacion,
   EstadoInvitacion,
   EstadoPago,
-  EstadoProntoPago,
   EstadoRequerimiento,
   Portal,
   Role,
@@ -40,7 +39,7 @@ export class NavegacionService {
   }
 
   private async cliente(companyId: string, role: Role) {
-    const [pendientes, facturas, pronto, usuarios, reglas, requerimientos] =
+    const [pendientes, facturas, usuarios, reglas, requerimientos] =
       await Promise.all([
         this.prisma.aprobacion.findMany({
           where: {
@@ -53,14 +52,6 @@ export class NavegacionService {
           ? this.prisma.factura.count({
               where: {
                 estado: EstadoFactura.RADICADA,
-                pago: { contrato: { companyId } },
-              },
-            })
-          : 0,
-        CXP.includes(role)
-          ? this.prisma.solicitudProntoPago.count({
-              where: {
-                estado: EstadoProntoPago.SOLICITADA,
                 pago: { contrato: { companyId } },
               },
             })
@@ -79,7 +70,7 @@ export class NavegacionService {
     ).length;
     return {
       aprobaciones,
-      cuentasPorPagar: facturas + pronto,
+      cuentasPorPagar: facturas,
       // The setup wizard's required steps (the cost centers one is optional).
       onboardingCompleto: usuarios > 1 && reglas > 0 && requerimientos > 0,
     };

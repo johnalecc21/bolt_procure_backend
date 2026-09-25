@@ -52,7 +52,7 @@ Hojas (y columnas estables) del Excel; cada hoja también se descarga como CSV:
 - `Ordenes`: id_procurex, codigo, numero_oc, tipo, estado, anulada, contrato_marco, requerimiento, nit_proveedor, proveedor, fecha_firma, vigencia_inicio, vigencia_fin, moneda, valor_total, dias_pago, centro_costo, centro_costo_erp, categoria, cuenta_erp
 - `Lineas`: codigo_orden, linea, descripcion, cantidad, unidad, precio_unitario, subtotal, moneda
 - `Recepciones`: id_procurex, codigo_orden, nit_proveedor, descripcion, fecha_comprometida, fecha_recepcion, porcentaje, moneda, valor_liberado
-- `Facturas`: id_procurex, numero_factura, nit_proveedor, proveedor, codigo_orden, concepto, fecha_emision, fecha_radicacion, fecha_aprobacion, fecha_vencimiento, moneda, valor, descuento_pronto_pago, valor_a_pagar, centro_costo_erp, cuenta_erp, id_pago
+- `Facturas`: id_procurex, numero_factura, nit_proveedor, proveedor, codigo_orden, concepto, fecha_emision, fecha_radicacion, fecha_aprobacion, fecha_vencimiento, moneda, valor, valor_a_pagar, centro_costo_erp, cuenta_erp, id_pago
 - `Pagos`: id_procurex, codigo_orden, numero_factura, nit_proveedor, proveedor, moneda, valor_pagado, fecha_pago, referencia
 
 ## Modo webhook
@@ -172,14 +172,14 @@ Siigo no tiene API de órdenes de compra ni de recepciones: en este modo esos do
 ### Configuración (Integración ERP › Conexión › Siigo Nube)
 
 1. **Credenciales**: usuario y *access key* de la API de Siigo (los genera el administrador de la cuenta Siigo). La key se guarda cifrada (AES-256-GCM) y nunca se devuelve.
-2. **Probar y cargar catálogos**: lee de la propia cuenta de Siigo los comprobantes FC y RP, las formas de pago, los centros de costo, los IVA y los descuentos del RP.
+2. **Probar y cargar catálogos**: lee de la propia cuenta de Siigo los comprobantes FC y RP, las formas de pago, los centros de costo y los IVA.
 3. **Cómo se registra**:
    - comprobante FC y forma de pago (normalmente *crédito proveedores*: la factura queda como cuenta por pagar, con el vencimiento pactado);
    - cuenta contable por defecto (auxiliar del PUC), usada cuando la categoría no tiene cuenta en **Mapeos**;
    - IVA opcional: el valor facturado se toma con IVA incluido (`tax_included`) y Siigo lo discrimina;
    - departamento y ciudad (códigos DANE) y responsabilidad fiscal, que solo se usan al crear terceros nuevos.
 4. **Pagos**, una de dos opciones:
-   - *Los registro en Procurex*: elige el comprobante RP y el banco o caja. Opcionalmente, el concepto de descuento para el pronto pago; sin él, un pago con descuento deja ese saldo abierto en Siigo.
+   - *Los registro en Procurex*: elige el comprobante RP y el banco o caja.
    - *Los hago en Siigo*: Procurex no envía egresos y marca como pagada cada factura que Siigo muestre sin saldo.
 5. **Mapeos**: el centro de costo va con su **código en Siigo** (debe existir allá) y la categoría con su **cuenta contable**.
 

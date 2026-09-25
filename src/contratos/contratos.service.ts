@@ -298,7 +298,6 @@ export class ContratosService {
       id: p.id,
       concepto: p.hitoOrigen?.label ?? null,
       monto: p.monto,
-      montoNeto: p.monto - p.descuentoProntoPago,
       estado: estadoEfectivo(p.estado, p.fechaPagoPactada, ahora),
       fechaPagoPactada: p.fechaPagoPactada,
       fechaPago: p.fechaPago,

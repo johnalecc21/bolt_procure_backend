@@ -6,13 +6,7 @@ import {
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
-import {
-  EstadoFactura,
-  EstadoPago,
-  EstadoProntoPago,
-  Prisma,
-  Role,
-} from '@prisma/client';
+import { EstadoFactura, EstadoPago, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { StorageService } from '../storage/storage.service';
@@ -21,7 +15,6 @@ import { AuditLogService } from '../audit-log/audit-log.service';
 import { formatContratoCodigo } from '../common/utils/codigo.util';
 import { formatMonto } from '../common/utils/moneda.util';
 import {
-  calcularProntoPago,
   estadoEfectivo,
   FACTURAS_BUCKET,
   fechaPactadaDesde,
@@ -45,7 +38,6 @@ export const INCLUDE_PAGO = {
   },
   proveedor: { select: { id: true, nombre: true } },
   facturas: { orderBy: { createdAt: 'desc' } },
-  solicitudesProntoPago: { orderBy: { createdAt: 'desc' } },
   hitoOrigen: { select: { label: true } },
 } satisfies Prisma.PagoPOInclude;
 
@@ -53,7 +45,7 @@ type PagoCompleto = Prisma.PagoPOGetPayload<{ include: typeof INCLUDE_PAGO }>;
 
 /** Flattens a payment for the screens: codes, the live invoice and effective state. */
 export function vistaPago(p: PagoCompleto, ahora = new Date()) {
-  const { contrato, facturas, solicitudesProntoPago, hitoOrigen, ...pago } = p;
+  const { contrato, facturas, hitoOrigen, ...pago } = p;
   const facturaVigente =
     facturas.find((f) => f.estado !== EstadoFactura.RECHAZADA) ?? null;
   return {
@@ -66,10 +58,8 @@ export function vistaPago(p: PagoCompleto, ahora = new Date()) {
     proveedor: p.proveedor.nombre,
     concepto: hitoOrigen?.label ?? null,
     condicionesPagoDias: contrato.condicionesPagoDias,
-    montoNeto: pago.monto - pago.descuentoProntoPago,
     facturaVigente,
     facturas,
-    prontoPago: solicitudesProntoPago[0] ?? null,
   };
 }
 
@@ -216,94 +206,6 @@ export class PagosService implements OnModuleInit {
       pago.soportePath,
     );
     return { url, nombre: pago.soporteNombre };
-  }
-
-  async simularProntoPago(
-    userId: string,
-    pagoId: string,
-    fechaPropuesta: string,
-  ) {
-    const pago = await this.miPago(userId, pagoId);
-    this.validarProntoPago(pago, new Date(fechaPropuesta));
-    return {
-      montoOriginal: pago.monto,
-      ...calcularProntoPago(
-        pago.monto,
-        pago.fechaPagoPactada,
-        new Date(fechaPropuesta),
-      ),
-    };
-  }
-
-  /** Asks the buyer to pay earlier in exchange for the pro-rated discount. */
-  async solicitarProntoPago(
-    userId: string,
-    pagoId: string,
-    fechaPropuesta: string,
-    actorNombre: string,
-  ) {
-    const pago = await this.miPago(userId, pagoId);
-    const propuesta = new Date(fechaPropuesta);
-    this.validarProntoPago(pago, propuesta);
-    const calculo = calcularProntoPago(
-      pago.monto,
-      pago.fechaPagoPactada,
-      propuesta,
-    );
-    const solicitud = await this.prisma.$transaction(async (tx) => {
-      const abierta = await tx.solicitudProntoPago.count({
-        where: { pagoId, estado: EstadoProntoPago.SOLICITADA },
-      });
-      if (abierta > 0)
-        throw new ConflictException(
-          'Ya tienes una solicitud de pronto pago en revisión.',
-        );
-      return tx.solicitudProntoPago.create({
-        data: {
-          pagoId,
-          fechaPropuesta: propuesta,
-          descuentoPct: calculo.descuentoPct,
-          montoNeto: calculo.montoNeto,
-        },
-      });
-    });
-    await this.auditLog.log({
-      companyId: pago.contrato.companyId,
-      usuario: actorNombre,
-      accion: 'Pronto pago solicitado',
-      detalle: `${pago.proveedor.nombre} — ${formatContratoCodigo(pago.contrato.tipo, pago.contrato.numero)}: ${formatMonto(calculo.montoNeto, pago.moneda)} el ${propuesta.toISOString().slice(0, 10)}`,
-    });
-    await this.notificarCliente(
-      pago.contrato.companyId,
-      [Role.ADMIN_CLIENTE, Role.APROBADOR_CFO],
-      'Solicitud de pronto pago',
-      `${pago.proveedor.nombre} ofrece ${(calculo.descuentoPct * 100).toLocaleString('es-CO', { maximumFractionDigits: 2 })}% de descuento por pagar ${calculo.dias} días antes.`,
-      `/cliente/pagos?pago=${pago.id}`,
-    );
-    return solicitud;
-  }
-
-  private validarProntoPago(pago: PagoCompleto, propuesta: Date) {
-    if (Number.isNaN(propuesta.getTime()))
-      throw new BadRequestException('Fecha inválida.');
-    if (pago.estado === EstadoPago.PAGADO)
-      throw new ConflictException('Este pago ya fue registrado.');
-    if (pago.descuentoProntoPago > 0)
-      throw new ConflictException(
-        'Este pago ya tiene un pronto pago acordado.',
-      );
-    if (!pago.facturas.some((f) => f.estado === EstadoFactura.APROBADA))
-      throw new BadRequestException(
-        'El pronto pago está disponible cuando tu factura ha sido aprobada.',
-      );
-    const hoy = new Date();
-    hoy.setHours(0, 0, 0, 0);
-    if (propuesta < hoy)
-      throw new BadRequestException('La fecha propuesta no puede ser pasada.');
-    if (propuesta >= pago.fechaPagoPactada)
-      throw new BadRequestException(
-        'La fecha propuesta debe ser anterior a la fecha de pago pactada.',
-      );
   }
 
   private async notificarCliente(

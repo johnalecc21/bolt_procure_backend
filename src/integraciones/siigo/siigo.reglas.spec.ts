@@ -150,37 +150,25 @@ describe('siigo.reglas', () => {
       nit: '900373115',
       fechaPago: '2026-09-20',
       cuota,
-      valorPagado: 970_000,
-      descuento: 30_000,
+      valorPagado: 1_000_000,
       referencia: 'TRX-1',
       factura: 'FE-10',
     };
-    const conDesc = cuerpoEgreso({
+    const cuerpo = cuerpoEgreso({
       ...base,
-      c: configSiigo({
-        documentoEgresoId: 40,
-        formaPagoEgresoId: 50,
-        descuentoProntoPagoId: 60,
-      }),
+      c: configSiigo({ documentoEgresoId: 40, formaPagoEgresoId: 50 }),
     });
-    expect(conDesc).toMatchObject({
+    expect(cuerpo).toMatchObject({
       type: 'DebtPayment',
       document: { id: 40 },
       items: [
         {
           due: { prefix: 'FC-1', consecutive: 73, quote: 1 },
           value: 1_000_000,
-          discounts: [{ id: 60, value: 30_000 }],
         },
       ],
-      payment: { id: 50, value: 970_000 },
+      payment: { id: 50, value: 1_000_000 },
     });
-    const sinDesc = cuerpoEgreso({
-      ...base,
-      c: configSiigo({ documentoEgresoId: 40, formaPagoEgresoId: 50 }),
-    });
-    expect(sinDesc.items[0].value).toBe(970_000);
-    expect('discounts' in sinDesc.items[0]).toBe(false);
   });
 
   it('lists what is missing depending on who records payments', () => {

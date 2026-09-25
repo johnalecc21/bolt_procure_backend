@@ -88,7 +88,7 @@ planes/          límites por plan (usuarios, requerimientos/mes, almacenamiento
 email/           correos transaccionales (Resend) de cada notificación
 vitrina/         vitrina pública y contenido del proveedor
 invitaciones/    bandeja de invitaciones del proveedor
-pagos/           centro de pagos / pronto pago
+pagos/           facturas del proveedor y registro de pagos
 notificaciones/  centro de notificaciones
 audit-log/       registro de auditoría transversal
 subasta/         WebSocket gateway para negociación/subasta en vivo

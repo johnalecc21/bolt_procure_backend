@@ -100,7 +100,6 @@ export function filaFactura(d: any): Fila {
     fecha_vencimiento: d.fechaVencimiento,
     moneda: d.moneda,
     valor: d.valor,
-    descuento_pronto_pago: d.descuentoProntoPago,
     valor_a_pagar: d.valorAPagar,
     centro_costo_erp: d.centroCostoErp,
     cuenta_erp: d.cuentaErp,

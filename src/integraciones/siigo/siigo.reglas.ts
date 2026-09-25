@@ -29,8 +29,6 @@ export interface ConfigSiigo {
   documentoEgresoId?: number | null;
   /** Payment type (bank account) disbursements come out of. */
   formaPagoEgresoId?: number | null;
-  /** Discount concept of the RP document for early-payment discounts. */
-  descuentoProntoPagoId?: number | null;
   /** DANE codes for suppliers created from Procurex. */
   departamento?: string;
   ciudad?: string;
@@ -271,13 +269,11 @@ export function cuerpoEgreso(args: {
   fechaPago: string;
   cuota: CuotaSiigo;
   valorPagado: number;
-  descuento: number;
   referencia: string | null;
   factura: string;
   c: ConfigSiigo;
 }) {
   const { c, cuota } = args;
-  const conDescuento = args.descuento > 0 && !!c.descuentoProntoPagoId;
   return {
     document: { id: c.documentoEgresoId },
     date: args.fechaPago,
@@ -291,17 +287,7 @@ export function cuerpoEgreso(args: {
           quote: cuota.quote,
           date: cuota.date,
         },
-        // The debt is cancelled for the paid value plus the discount taken.
-        value: conDescuento
-          ? args.valorPagado + args.descuento
-          : args.valorPagado,
-        ...(conDescuento
-          ? {
-              discounts: [
-                { id: c.descuentoProntoPagoId, value: args.descuento },
-              ],
-            }
-          : {}),
+        value: args.valorPagado,
       },
     ],
     payment: { id: c.formaPagoEgresoId, value: args.valorPagado },

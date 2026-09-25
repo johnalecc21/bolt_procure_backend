@@ -41,12 +41,6 @@ export class RadicarFacturaDto {
   nombre: string;
 }
 
-export class SolicitarProntoPagoDto {
-  /** Date the proveedor would like to be paid (before the agreed one). */
-  @IsISO8601()
-  fechaPropuesta: string;
-}
-
 export class MotivoDto {
   @IsString()
   @MinLength(3)

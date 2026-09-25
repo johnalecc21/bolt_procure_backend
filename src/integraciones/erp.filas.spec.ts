@@ -60,8 +60,7 @@ describe('filas del archivo para el ERP', () => {
       proveedor: { nit: '9', razonSocial: 'X' },
       orden: { codigo: 'PO-1' },
       valor: 10,
-      valorAPagar: 9,
-      descuentoProntoPago: 1,
+      valorAPagar: 10,
       moneda: 'COP',
       pagoId: 'p',
     });
