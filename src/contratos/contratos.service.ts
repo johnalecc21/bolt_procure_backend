@@ -1,3 +1,4 @@
+import { PlantillasService } from '../plantillas/plantillas.service';
 import {
   BadRequestException,
   ConflictException,
@@ -137,6 +138,7 @@ export class ContratosService {
     private notificaciones: NotificacionesService,
     private seguimiento: SeguimientoService,
     private erp: ErpEventosService,
+    private plantillas: PlantillasService,
   ) {}
 
   /** Server-side paginated list for the Contratos screen. */
@@ -238,7 +240,11 @@ export class ContratosService {
       include: INCLUDE_FICHA,
     });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
-    return this.ficha(contrato, true);
+    const [marca, plantillaActiva] = await Promise.all([
+      this.plantillas.marcaParaPdf(contrato.companyId),
+      this.plantillas.hayPlantilla(contrato.companyId, contrato),
+    ]);
+    return { ...this.ficha(contrato, true), marca, plantillaActiva };
   }
 
   async findOneMine(userId: string, id: string) {
@@ -248,7 +254,11 @@ export class ContratosService {
       include: INCLUDE_FICHA,
     });
     if (!contrato) throw new NotFoundException('Contrato no encontrado.');
-    return this.ficha(contrato, false);
+    return {
+      ...this.ficha(contrato, false),
+      marca: await this.plantillas.marcaParaPdf(contrato.companyId),
+      plantillaActiva: false,
+    };
   }
 
   async listMine(userId: string) {
@@ -391,6 +401,8 @@ export class ContratosService {
             nombre: v.nombre,
             tamanoBytes: v.tamanoBytes,
             subidoPor: v.subidoPor,
+            origen: v.origen,
+            editable: !!v.storagePathEditable,
             createdAt: v.createdAt,
           }))
         : [],
@@ -522,9 +534,15 @@ export class ContratosService {
           porcentaje: 100,
         },
       });
-      await this.erp.emitirOrden(companyId, po.id);
       return po;
     });
+    // After commit: the snapshot reads the PO outside the transaction.
+    await this.erp.emitirOrden(companyId, po.id);
+    await this.plantillas.generarSilencioso(
+      companyId,
+      po.id,
+      'emisión de la PO',
+    );
     const codigo = formatContratoCodigo(po.tipo, po.numero);
     const codigoPadre = formatContratoCodigo(padre.tipo, padre.numero);
     await this.auditLog.log({
@@ -600,6 +618,7 @@ export class ContratosService {
       id,
     );
     await this.erp.emitir(companyId, TipoEventoErp.ORDEN_COMPRA, id);
+    await this.plantillas.generarSilencioso(companyId, id, 'prórroga');
     return this.findOne(companyId, id);
   }
 
@@ -673,6 +692,7 @@ export class ContratosService {
       id,
     );
     await this.erp.emitir(companyId, TipoEventoErp.ORDEN_COMPRA, id);
+    await this.plantillas.generarSilencioso(companyId, id, 'cambio de valor');
     return this.findOne(companyId, id);
   }
 
@@ -834,15 +854,41 @@ export class ContratosService {
     return { url, nombre: contrato.archivoNombre };
   }
 
-  async urlVersion(companyId: string, id: string, versionId: string) {
+  /** A document version; `editable` gives the filled Word file of a generated one. */
+  async urlVersion(
+    companyId: string,
+    id: string,
+    versionId: string,
+    editable = false,
+  ) {
     const version = await this.prisma.versionDocumentoContrato.findFirst({
       where: { id: versionId, contratoId: id, contrato: { companyId } },
     });
     if (!version) throw new NotFoundException('Versión no encontrada.');
-    const { url } = await this.storage.createDownloadUrl(
-      BUCKET,
-      version.storagePath,
+    if (editable && !version.storagePathEditable)
+      throw new NotFoundException('Esta versión no tiene archivo de Word.');
+    const path = editable ? version.storagePathEditable! : version.storagePath;
+    const { url } = await this.storage.createDownloadUrl(BUCKET, path);
+    return {
+      url,
+      nombre: editable
+        ? version.nombre.replace(/\.pdf$/i, '.docx')
+        : version.nombre,
+    };
+  }
+
+  /** Re-fills the active template with the current data (after editing it, say). */
+  async regenerarDocumento(companyId: string, id: string, actor: string) {
+    await this.contratoDeEmpresa(companyId, id);
+    const version = await this.plantillas.generar(
+      companyId,
+      id,
+      `regenerado por ${actor}`,
     );
-    return { url, nombre: version.nombre };
+    if (!version)
+      throw new BadRequestException(
+        'No hay una plantilla activa para este tipo de documento. Súbela en Configurar empresa › Plantillas.',
+      );
+    return this.findOne(companyId, id);
   }
 }

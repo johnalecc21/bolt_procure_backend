@@ -1,3 +1,4 @@
+import { PlantillasModule } from '../plantillas/plantillas.module';
 import { Module } from '@nestjs/common';
 import { ContratosService } from './contratos.service';
 import { ContratosController } from './contratos.controller';
@@ -12,6 +13,7 @@ import { SeguimientoModule } from '../seguimiento/seguimiento.module';
     ProveedoresModule,
     NotificacionesModule,
     SeguimientoModule,
+    PlantillasModule,
   ],
   controllers: [ContratosController],
   providers: [ContratosService],

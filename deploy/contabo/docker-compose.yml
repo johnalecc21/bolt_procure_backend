@@ -1,4 +1,4 @@
-# Producción en un VPS (Contabo): API + Redis + Caddy (HTTPS automático).
+# Producción en un VPS (Contabo): API + Redis + Gotenberg + Caddy (HTTPS automático).
 # La base de datos, la autenticación y el almacenamiento siguen en Supabase.
 # Uso: ver docs/DESPLIEGUE-CONTABO.md  (desde esta carpeta: ./desplegar.sh)
 name: procurex
@@ -17,9 +17,13 @@ services:
       # Caddy es el único proxy delante de la API.
       TRUST_PROXY_HOPS: "1"
       REDIS_URL: redis://redis:6379
+      # Convierte a PDF los contratos/POs llenados desde las plantillas Word.
+      GOTENBERG_URL: http://gotenberg:3000
     depends_on:
       redis:
         condition: service_healthy
+      gotenberg:
+        condition: service_started
     # Sin puertos publicados: solo Caddy llega a la API por la red interna.
     expose:
       - "3001"
@@ -38,6 +42,23 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # LibreOffice en un contenedor (.docx → PDF). Solo en la red interna.
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    restart: unless-stopped
+    command:
+      - gotenberg
+      - --api-timeout=60s
+      # Nada de descargar recursos externos al convertir.
+      - --chromium-deny-list=^.*$$
+      - --webhook-disable=true
+    expose:
+      - "3000"
+    mem_limit: 1g
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }

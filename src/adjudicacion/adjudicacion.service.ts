@@ -1,3 +1,4 @@
+import { PlantillasService } from '../plantillas/plantillas.service';
 import {
   BadRequestException,
   ConflictException,
@@ -31,6 +32,7 @@ export class AdjudicacionService {
     private auditLog: AuditLogService,
     private notificaciones: NotificacionesService,
     private erp: ErpEventosService,
+    private plantillas: PlantillasService,
   ) {}
 
   /**
@@ -477,6 +479,12 @@ export class AdjudicacionService {
     );
 
     await this.erp.emitirOrden(requerimiento.companyId, contratoId);
+    // The company's own contract/PO template, when it has one.
+    await this.plantillas.generarSilencioso(
+      requerimiento.companyId,
+      contratoId,
+      'firma',
+    );
     await this.auditLog.log({
       companyId: requerimiento.companyId,
       usuario: actorNombre,

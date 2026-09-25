@@ -53,6 +53,10 @@ export const envValidationSchema = Joi.object({
   // SUPABASE_SERVICE_ROLE_KEY; set it to rotate that independently.
   INTEGRACIONES_SECRET: Joi.string().min(16).allow('').optional(),
 
+  // Gotenberg (LibreOffice) to turn filled Word templates into PDF. Without
+  // it the filled .docx is delivered as is.
+  GOTENBERG_URL: Joi.string().uri().allow('').optional(),
+
   // Siigo Nube connector. The URL only changes for a sandbox or tests; the
   // Partner-Id is the integrating application's name Siigo asks for.
   SIIGO_API_URL: Joi.string().uri().allow('').optional(),

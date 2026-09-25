@@ -256,6 +256,8 @@ model Company {
 
   integracionErp    IntegracionErp?
   mapeosErp         MapeoErp[]
+  plantillas        PlantillaDocumento[]
+  marcaDocumentos   MarcaDocumentos?
   eventosErp        EventoErp[]
   memberships       CompanyMembership[]
   requerimientos    Requerimiento[]
@@ -771,13 +773,18 @@ model ModificacionContrato {
 
 /// Each file the company attached to a contract; the newest is the current one.
 model VersionDocumentoContrato {
-  id          String   @id @default(cuid())
-  contratoId  String
-  nombre      String
-  storagePath String
-  tamanoBytes Int?
-  subidoPor   String
-  createdAt   DateTime @default(now())
+  id                  String   @id @default(cuid())
+  contratoId          String
+  nombre              String
+  storagePath         String
+  tamanoBytes         Int?
+  subidoPor           String
+  /// MANUAL (uploaded by the company) or PLANTILLA (filled from its Word template).
+  origen              String   @default("MANUAL")
+  plantillaId         String?
+  /// Filled .docx kept next to the PDF so legal can still edit it.
+  storagePathEditable String?
+  createdAt           DateTime @default(now())
 
   contrato Contrato @relation(fields: [contratoId], references: [id], onDelete: Cascade)
 
@@ -1331,4 +1338,66 @@ model EventoErp {
   @@index([estado, proximoIntento])
   @@index([companyId, estado])
   @@map("eventos_erp")
+}
+
+// ---------------------------------------------------------------------------
+// Plantillas de documentos (contratos / órdenes de compra de cada empresa)
+// ---------------------------------------------------------------------------
+
+enum TipoPlantilla {
+  /// Contrato marco (tipo CONTRATO sin padre).
+  CONTRATO_MARCO
+  /// Orden de compra, sola o emitida bajo un marco.
+  ORDEN_COMPRA
+}
+
+/// A company's own Word template, filled with the contract data on signing.
+model PlantillaDocumento {
+  id            String        @id @default(cuid())
+  companyId     String
+  tipo          TipoPlantilla
+  /// Only for this purchase category; null = every category.
+  categoria     String?
+  nombre        String
+  archivoNombre String
+  storagePath   String
+  tamanoBytes   Int?
+  activa        Boolean       @default(false)
+  /// Placeholders found in the file when it was validated.
+  marcadores    String[]      @default([])
+  advertencias  String[]      @default([])
+  subidaPor     String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, tipo, activa])
+  @@map("plantillas_documento")
+}
+
+/// The company's letterhead for the documents Procurex generates itself.
+model MarcaDocumentos {
+  id                 String   @id @default(cuid())
+  companyId          String   @unique
+  razonSocial        String?
+  nit                String?
+  direccion          String?
+  ciudad             String?
+  telefono           String?
+  email              String?
+  sitioWeb           String?
+  representanteLegal String?
+  cargoRepresentante String?
+  /// Hex color for headings in the Procurex PDF.
+  colorPrimario      String?
+  logoPath           String?
+  /// Company clauses appended to every generated contract / PO.
+  clausulas          String?
+  piePagina          String?
+  updatedAt          DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("marca_documentos")
 }

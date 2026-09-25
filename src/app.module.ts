@@ -34,6 +34,7 @@ import { OfertasModule } from './ofertas/ofertas.module';
 import { AdjudicacionModule } from './adjudicacion/adjudicacion.module';
 import { ErpEventosModule } from './integraciones/erp-eventos.module';
 import { IntegracionesModule } from './integraciones/integraciones.module';
+import { PlantillasModule } from './plantillas/plantillas.module';
 import { ContratosModule } from './contratos/contratos.module';
 import { SeguimientoModule } from './seguimiento/seguimiento.module';
 import { DisputasModule } from './disputas/disputas.module';
@@ -55,7 +56,10 @@ import { EmailModule } from './email/email.module';
 @Module({
   imports: [
     SentryModule.forRoot(),
-    ConfigModule.forRoot({ isGlobal: true, validationSchema: envValidationSchema }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validationSchema: envValidationSchema,
+    }),
     ScheduleModule.forRoot(),
     LoggerModule.forRootAsync({
       inject: [ConfigService],
@@ -91,9 +95,15 @@ import { EmailModule } from './email/email.module';
               host: lokiHost,
               basicAuth:
                 config.get('LOKI_USER') && config.get('LOKI_PASSWORD')
-                  ? { username: config.get('LOKI_USER'), password: config.get('LOKI_PASSWORD') }
+                  ? {
+                      username: config.get('LOKI_USER'),
+                      password: config.get('LOKI_PASSWORD'),
+                    }
                   : undefined,
-              labels: { app: 'bolt-procure-backend', env: config.get('NODE_ENV', 'development') },
+              labels: {
+                app: 'bolt-procure-backend',
+                env: config.get('NODE_ENV', 'development'),
+              },
               batching: true,
               interval: 5,
             },
@@ -107,13 +117,21 @@ import { EmailModule } from './email/email.module';
             transport: targets.length ? { targets } : undefined,
             autoLogging: true,
             redact: {
-              paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
+              paths: [
+                'req.headers.authorization',
+                'req.headers.cookie',
+                'res.headers["set-cookie"]',
+              ],
               remove: true,
             },
             // Auto-logged request/response lines don't get a `context` from
             // Nest's Logger, so we set one here — keeps every console line
             // (app logs and HTTP logs alike) showing "[service] [context]".
-            customProps: (req: IncomingMessage & { user?: { id?: string; email?: string; portal?: string } }) => ({
+            customProps: (
+              req: IncomingMessage & {
+                user?: { id?: string; email?: string; portal?: string };
+              },
+            ) => ({
               context: 'HTTP',
               userId: req.user?.id,
               userEmail: req.user?.email,
@@ -121,8 +139,11 @@ import { EmailModule } from './email/email.module';
             }),
             customSuccessMessage: (req: IncomingMessage, res: ServerResponse) =>
               `${req.method} ${req.url} ${res.statusCode}`,
-            customErrorMessage: (req: IncomingMessage, res: ServerResponse, err: Error) =>
-              `${req.method} ${req.url} ${res.statusCode} — ${err.message}`,
+            customErrorMessage: (
+              req: IncomingMessage,
+              res: ServerResponse,
+              err: Error,
+            ) => `${req.method} ${req.url} ${res.statusCode} — ${err.message}`,
           },
         };
       },
@@ -153,6 +174,7 @@ import { EmailModule } from './email/email.module';
     AdjudicacionModule,
     ErpEventosModule,
     IntegracionesModule,
+    PlantillasModule,
     ContratosModule,
     SeguimientoModule,
     DisputasModule,

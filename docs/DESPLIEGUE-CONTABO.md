@@ -5,14 +5,17 @@ Navegador ──► Vercel (frontend, app.tudominio.com)
     │
     └──► Contabo VPS (api.tudominio.com)
             Caddy (HTTPS automático) ──► API NestJS ──► Redis (local)
-                                              │
+                                              │   └──► Gotenberg (Word → PDF, local)
                                               └──► Supabase (Postgres, Auth, Storage)
 ```
 
 La base de datos, el login y los archivos siguen en **Supabase**. En el VPS corren
-tres contenedores: la **API**, **Redis** (límite de peticiones, caché de sesión y
-la subasta en vivo entre instancias) y **Caddy** (certificado TLS de Let's Encrypt
-y proxy, incluidos los WebSockets de la subasta). Ya no hace falta Upstash.
+cuatro contenedores: la **API**, **Redis** (límite de peticiones, caché de sesión y
+la subasta en vivo entre instancias), **Gotenberg** (LibreOffice: convierte a PDF
+los contratos y órdenes llenados desde las plantillas Word de cada empresa; ~1 GB
+de RAM como máximo, sin puertos publicados) y **Caddy** (certificado TLS de Let's
+Encrypt y proxy, incluidos los WebSockets de la subasta). Ya no hace falta Upstash.
+Si Gotenberg no está, los documentos se entregan en Word en lugar de PDF.
 
 Archivos: `Dockerfile`, `deploy/contabo/` (`docker-compose.yml`, `Caddyfile`,
 `.env.example`, `preparar-servidor.sh`, `desplegar.sh`) y
@@ -30,7 +33,7 @@ Archivos: `Dockerfile`, `deploy/contabo/` (`docker-compose.yml`, `Caddyfile`,
   - `app.tudominio.com` → lo configuras en Vercel (paso 4).
 - El proyecto de Supabase ya creado (ver `DESPLIEGUE-DEMO.md` § 1: buckets
   privados `homologacion-documentos`, `contratos-documentos`,
-  `requerimientos-documentos`; `vitrina-proveedores` y `facturas-pagos` los crea
+  `requerimientos-documentos`; `vitrina-proveedores`, `facturas-pagos` y `plantillas-documentos` los crea
   la API al arrancar).
 
 ## 1. Preparar el servidor (una sola vez, como root)

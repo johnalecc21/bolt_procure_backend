@@ -124,8 +124,24 @@ export class ContratosController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Param('versionId') versionId: string,
+    @Query('editable') editable?: string,
   ) {
-    return this.service.urlVersion(user.companyId, id, versionId);
+    return this.service.urlVersion(
+      user.companyId,
+      id,
+      versionId,
+      editable === '1' || editable === 'true',
+    );
+  }
+
+  @PortalOnly('CLIENTE')
+  @Roles(...GESTIONAN)
+  @Post(':id/documento/regenerar')
+  regenerarDocumento(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.service.regenerarDocumento(user.companyId, id, user.email);
   }
 
   @PortalOnly('CLIENTE')

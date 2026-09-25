@@ -22,31 +22,77 @@ export class StorageService {
       .from(bucket)
       .createSignedUploadUrl(path, { upsert: true });
     if (error || !data) {
-      throw new BadRequestException(error?.message ?? 'No se pudo preparar la subida del archivo.');
+      throw new BadRequestException(
+        error?.message ?? 'No se pudo preparar la subida del archivo.',
+      );
     }
     return { path, token: data.token, signedUrl: data.signedUrl };
   }
 
-  async createDownloadUrl(bucket: string, path: string, expiresInSeconds = 300) {
-    const { data, error } = await this.supabase.admin.storage.from(bucket).createSignedUrl(path, expiresInSeconds);
+  async createDownloadUrl(
+    bucket: string,
+    path: string,
+    expiresInSeconds = 300,
+  ) {
+    const { data, error } = await this.supabase.admin.storage
+      .from(bucket)
+      .createSignedUrl(path, expiresInSeconds);
     if (error || !data) {
-      throw new BadRequestException(error?.message ?? 'No se pudo generar el enlace de descarga.');
+      throw new BadRequestException(
+        error?.message ?? 'No se pudo generar el enlace de descarga.',
+      );
     }
     return { url: data.signedUrl };
   }
 
   /** Batch version for pages that show many files at once (galleries). Missing files map to null. */
-  async createDownloadUrls(bucket: string, paths: string[], expiresInSeconds = 3600): Promise<Map<string, string | null>> {
+  async createDownloadUrls(
+    bucket: string,
+    paths: string[],
+    expiresInSeconds = 3600,
+  ): Promise<Map<string, string | null>> {
     const result = new Map<string, string | null>();
     if (paths.length === 0) return result;
-    const { data, error } = await this.supabase.admin.storage.from(bucket).createSignedUrls(paths, expiresInSeconds);
+    const { data, error } = await this.supabase.admin.storage
+      .from(bucket)
+      .createSignedUrls(paths, expiresInSeconds);
     if (error || !data) {
-      throw new BadRequestException(error?.message ?? 'No se pudieron generar los enlaces de los archivos.');
+      throw new BadRequestException(
+        error?.message ?? 'No se pudieron generar los enlaces de los archivos.',
+      );
     }
     for (const item of data) {
       if (item.path) result.set(item.path, item.error ? null : item.signedUrl);
     }
     return result;
+  }
+
+  /** Reads a stored file server-side (template validation, filling). */
+  async descargar(bucket: string, path: string): Promise<Buffer> {
+    const { data, error } = await this.supabase.admin.storage
+      .from(bucket)
+      .download(path);
+    if (error || !data)
+      throw new BadRequestException(
+        error?.message ?? 'No se pudo leer el archivo subido.',
+      );
+    return Buffer.from(await data.arrayBuffer());
+  }
+
+  /** Writes a file generated server-side (filled documents). */
+  async subir(
+    bucket: string,
+    path: string,
+    contenido: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    const { error } = await this.supabase.admin.storage
+      .from(bucket)
+      .upload(path, contenido, { contentType, upsert: true });
+    if (error)
+      throw new BadRequestException(
+        `No se pudo guardar el documento: ${error.message}`,
+      );
   }
 
   /** Best-effort delete — a leftover object is harmless, a failed DB delete is not. */
@@ -56,10 +102,16 @@ export class StorageService {
   }
 
   /** Creates a private bucket if it doesn't exist yet. Returns false when the bucket couldn't be checked or created. */
-  async ensureBucket(bucket: string, options: { fileSizeLimit: number; allowedMimeTypes: string[] }): Promise<boolean> {
+  async ensureBucket(
+    bucket: string,
+    options: { fileSizeLimit: number; allowedMimeTypes: string[] },
+  ): Promise<boolean> {
     const { data } = await this.supabase.admin.storage.getBucket(bucket);
     if (data) return true;
-    const { error } = await this.supabase.admin.storage.createBucket(bucket, { public: false, ...options });
+    const { error } = await this.supabase.admin.storage.createBucket(bucket, {
+      public: false,
+      ...options,
+    });
     return !error;
   }
 }
