@@ -18,6 +18,7 @@ import { inspeccionar, llenar, plantillaEjemplo } from './plantillas.motor';
 import {
   GRUPOS_MARCADORES,
   contextoEjemplo,
+  contextoPenalidad,
   dinero,
   fechaLarga,
   numero,
@@ -56,6 +57,36 @@ export const NOMBRE_TIPO: Record<TipoPlantilla, string> = {
   CONTRATO_MARCO: 'Contrato marco',
   ORDEN_COMPRA: 'Orden de compra',
 };
+
+/**
+ * The company's penalty clause for the PDF and the contract estimate, or
+ * null when it has none (then nothing is printed nor estimated).
+ */
+export function penalidadDe(
+  m: {
+    penalidadActiva: boolean;
+    penalidadDiaria: number | null;
+    penalidadTope: number | null;
+    penalidadDiasGracia: number;
+    penalidadBase: string;
+    penalidadTexto: string | null;
+  } | null,
+) {
+  if (
+    !m?.penalidadActiva ||
+    !m.penalidadDiaria ||
+    !m.penalidadTope ||
+    !m.penalidadTexto?.trim()
+  )
+    return null;
+  return {
+    diaria: m.penalidadDiaria,
+    tope: m.penalidadTope,
+    diasGracia: m.penalidadDiasGracia,
+    base: m.penalidadBase === 'CONTRATO' ? 'CONTRATO' : 'HITO',
+    texto: m.penalidadTexto.trim(),
+  };
+}
 
 /** Which kind of template a contract uses (addenda keep the Procurex one). */
 export function tipoPlantilla(c: {
@@ -311,16 +342,21 @@ export class PlantillasService implements OnModuleInit {
       representanteLegal: marca?.representanteLegal ?? '',
       cargoRepresentante: marca?.cargoRepresentante ?? '',
     };
-    return { empresa, clausulas: marca?.clausulas ?? '' };
+    return {
+      empresa,
+      clausulas: marca?.clausulas ?? '',
+      penalidad: contextoPenalidad(marca),
+    };
   }
 
   private async contextoDeEjemplo(
     companyId: string,
   ): Promise<ContextoDocumento> {
     const ejemplo = contextoEjemplo();
-    const { empresa, clausulas } = await this.marcaDe(companyId);
+    const { empresa, clausulas, penalidad } = await this.marcaDe(companyId);
     return {
       ...ejemplo,
+      penalidad: penalidad.texto ? penalidad : ejemplo.penalidad,
       empresa: Object.fromEntries(
         Object.entries(empresa).map(([k, v]) => [k, v || ejemplo.empresa[k]]),
       ),
@@ -358,7 +394,7 @@ export class PlantillasService implements OnModuleInit {
         modificaciones: { orderBy: { createdAt: 'asc' } },
       },
     });
-    const { empresa, clausulas } = await this.marcaDe(c.companyId);
+    const { empresa, clausulas, penalidad } = await this.marcaDe(c.companyId);
     const codigo = formatContratoCodigo(c.tipo, c.numero);
     const adj = c.adjudicacion;
     const condiciones = adj ?? c.padre?.adjudicacion ?? null;
@@ -453,6 +489,7 @@ export class PlantillasService implements OnModuleInit {
               : 'Terminación anticipada',
         motivo: m.motivo,
       })),
+      penalidad,
       clausulas,
       fechaGeneracion: fechaLarga(new Date()),
     };
@@ -627,6 +664,12 @@ export class PlantillasService implements OnModuleInit {
       colorPrimario: m?.colorPrimario ?? '',
       clausulas: m?.clausulas ?? '',
       piePagina: m?.piePagina ?? '',
+      penalidadActiva: m?.penalidadActiva ?? false,
+      penalidadDiaria: m?.penalidadDiaria ?? null,
+      penalidadTope: m?.penalidadTope ?? null,
+      penalidadDiasGracia: m?.penalidadDiasGracia ?? 0,
+      penalidadBase: m?.penalidadBase ?? 'HITO',
+      penalidadTexto: m?.penalidadTexto ?? '',
       tieneLogo: !!m?.logoPath,
       logoUrl,
     };
@@ -660,6 +703,7 @@ export class PlantillasService implements OnModuleInit {
       colorPrimario: m.colorPrimario,
       clausulas: m.clausulas,
       piePagina: m.piePagina,
+      penalidad: penalidadDe(m),
       logoUrl,
     };
   }
@@ -670,6 +714,22 @@ export class PlantillasService implements OnModuleInit {
         .filter(([, v]) => v !== undefined)
         .map(([k, v]) => [k, typeof v === 'string' ? v.trim() || null : v]),
     ) as Prisma.MarcaDocumentosUncheckedCreateInput;
+    // Turning the penalty on needs the numbers and the clause the company wrote.
+    const actual = await this.prisma.marcaDocumentos.findUnique({
+      where: { companyId },
+    });
+    const final = { ...actual, ...data };
+    if (final.penalidadActiva) {
+      const faltan = [
+        !final.penalidadDiaria && 'el porcentaje por día',
+        !final.penalidadTope && 'el tope',
+        !final.penalidadTexto?.trim() && 'el texto de la cláusula',
+      ].filter(Boolean);
+      if (faltan.length)
+        throw new BadRequestException(
+          `Para activar la penalidad completa ${faltan.join(', ')}.`,
+        );
+    }
     await this.prisma.marcaDocumentos.upsert({
       where: { companyId },
       create: { ...data, companyId },

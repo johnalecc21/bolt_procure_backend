@@ -1,5 +1,7 @@
 import {
   IsBoolean,
+  IsNumber,
+  Max,
   IsEnum,
   IsIn,
   IsInt,
@@ -95,6 +97,37 @@ export class MarcaDto {
 
   @Texto(20000) clausulas?: string;
   @Texto(300) piePagina?: string;
+
+  // Penalty clause: the company decides whether there is one and writes it.
+  @IsOptional()
+  @IsBoolean()
+  penalidadActiva?: boolean;
+
+  /** % per day of delay (0.5 = 0,5 %). */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  @Max(10)
+  penalidadDiaria?: number;
+
+  /** Cap as % of the contract value. */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(100)
+  penalidadTope?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  penalidadDiasGracia?: number;
+
+  @IsOptional()
+  @IsIn(['HITO', 'CONTRATO'])
+  penalidadBase?: 'HITO' | 'CONTRATO';
+
+  @Texto(5000) penalidadTexto?: string;
 }
 
 export class LogoDto {

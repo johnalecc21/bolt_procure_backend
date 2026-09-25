@@ -1378,24 +1378,35 @@ model PlantillaDocumento {
 
 /// The company's letterhead for the documents Procurex generates itself.
 model MarcaDocumentos {
-  id                 String   @id @default(cuid())
-  companyId          String   @unique
-  razonSocial        String?
-  nit                String?
-  direccion          String?
-  ciudad             String?
-  telefono           String?
-  email              String?
-  sitioWeb           String?
-  representanteLegal String?
-  cargoRepresentante String?
+  id                  String   @id @default(cuid())
+  companyId           String   @unique
+  razonSocial         String?
+  nit                 String?
+  direccion           String?
+  ciudad              String?
+  telefono            String?
+  email               String?
+  sitioWeb            String?
+  representanteLegal  String?
+  cargoRepresentante  String?
   /// Hex color for headings in the Procurex PDF.
-  colorPrimario      String?
-  logoPath           String?
+  colorPrimario       String?
+  logoPath            String?
   /// Company clauses appended to every generated contract / PO.
-  clausulas          String?
-  piePagina          String?
-  updatedAt          DateTime @updatedAt
+  clausulas           String?
+  piePagina           String?
+  /// Penalty clause, written and chosen by the company. Off = none printed
+  /// and no estimate shown.
+  penalidadActiva     Boolean  @default(false)
+  /// % of the base per day of delay (0.5 = 0,5 %).
+  penalidadDiaria     Float?
+  /// Cap, % of the contract value.
+  penalidadTope       Float?
+  penalidadDiasGracia Int      @default(0)
+  /// HITO: the late milestone's value; CONTRATO: the whole contract value.
+  penalidadBase       String   @default("HITO")
+  penalidadTexto      String?
+  updatedAt           DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 

@@ -2,6 +2,7 @@ import PizZip from 'pizzip';
 import { inspeccionar, llenar, plantillaEjemplo } from './plantillas.motor';
 import {
   contextoEjemplo,
+  contextoPenalidad,
   enLetras,
   fechaLarga,
   valorEnLetras,
@@ -59,8 +60,37 @@ describe('plantillas.motor', () => {
   it('omits a conditional block when the value is empty', () => {
     const ctx = contextoEjemplo();
     ctx.contrato.contratoMarco = '';
+    ctx.penalidad = contextoPenalidad(null);
     const t = texto(llenar(plantillaEjemplo('ORDEN_COMPRA'), ctx));
     expect(t).not.toContain('contrato marco');
+    expect(t).not.toContain('PENALIDADES');
+  });
+
+  it('prints the penalty the company wrote, never a default one', () => {
+    const base = {
+      penalidadActiva: true,
+      penalidadDiaria: 0.2,
+      penalidadTope: 5,
+      penalidadDiasGracia: 3,
+      penalidadBase: 'CONTRATO',
+      penalidadTexto: 'Multa del 0,2 % diario, máximo 5 %.',
+    };
+    expect(contextoPenalidad(base)).toEqual({
+      texto: 'Multa del 0,2 % diario, máximo 5 %.',
+      porcentajeDiario: '0,2',
+      tope: '5',
+      diasGracia: '3',
+      base: 'el valor total del contrato',
+    });
+    expect(contextoPenalidad({ ...base, penalidadActiva: false }).texto).toBe(
+      '',
+    );
+    expect(contextoPenalidad({ ...base, penalidadTexto: ' ' }).texto).toBe('');
+    const ctx = contextoEjemplo();
+    ctx.penalidad = contextoPenalidad(base);
+    expect(texto(llenar(plantillaEjemplo('ORDEN_COMPRA'), ctx))).toContain(
+      'PENALIDADES POR INCUMPLIMIENTO: Multa del 0,2 % diario, máximo 5 %.',
+    );
   });
 
   it('rejects unknown placeholders with a readable message', () => {

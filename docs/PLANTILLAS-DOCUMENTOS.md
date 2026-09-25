@@ -70,6 +70,12 @@ marcadores** (sale de `src/plantillas/plantillas.marcadores.ts`). En resumen:
   celda y el de cierre en la última.
 - Condicionales: `{{#contrato.contratoMarco}}texto{{/contrato.contratoMarco}}`
   solo aparece si hay un valor.
+- `penalidad.*`: texto, porcentajeDiario, tope, diasGracia y base. Salen de
+  **Marca y datos** y quedan vacíos si la empresa no configuró una penalidad,
+  así que conviene envolverlos en `{{#penalidad.texto}}…{{/penalidad.texto}}`.
+  Procurex no redacta ni impone ninguna penalidad: el texto lo escribe la
+  empresa. Los mismos números alimentan la penalidad estimada de la ficha del
+  contrato.
 - `{{clausulas}}` (las cláusulas de la empresa) y `{{fechaGeneracion}}`.
 
 Las fechas salen en formato largo ("25 de septiembre de 2026") y los valores

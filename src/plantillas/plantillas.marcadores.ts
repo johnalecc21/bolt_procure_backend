@@ -254,6 +254,36 @@ export const GRUPOS_MARCADORES: GrupoMarcadores[] = [
     ],
   },
   {
+    titulo: 'Penalidad por incumplimiento (Marca y datos)',
+    marcadores: [
+      {
+        clave: 'penalidad.texto',
+        descripcion: 'Cláusula redactada por tu empresa',
+        ejemplo: 'En caso de atraso injustificado…',
+      },
+      {
+        clave: 'penalidad.porcentajeDiario',
+        descripcion: '% por día de atraso',
+        ejemplo: '0,5',
+      },
+      {
+        clave: 'penalidad.tope',
+        descripcion: 'Tope, % del valor del contrato',
+        ejemplo: '10',
+      },
+      {
+        clave: 'penalidad.diasGracia',
+        descripcion: 'Días de gracia',
+        ejemplo: '0',
+      },
+      {
+        clave: 'penalidad.base',
+        descripcion: 'Sobre qué se calcula',
+        ejemplo: 'el valor del hito atrasado',
+      },
+    ],
+  },
+  {
     titulo: 'Otros',
     marcadores: [
       {
@@ -451,8 +481,44 @@ export interface ContextoDocumento {
   lineas: Record<string, string>[];
   hitos: Record<string, string>[];
   modificaciones: Record<string, string>[];
+  /** Empty strings when the company has no penalty clause. */
+  penalidad: Record<string, string>;
   clausulas: string;
   fechaGeneracion: string;
+}
+
+const pct = (n: number) =>
+  n.toLocaleString('es-CO', { maximumFractionDigits: 3 });
+
+/** The company's penalty settings as template text; all empty when off. */
+export function contextoPenalidad(
+  m: {
+    penalidadActiva: boolean;
+    penalidadDiaria: number | null;
+    penalidadTope: number | null;
+    penalidadDiasGracia: number;
+    penalidadBase: string;
+    penalidadTexto: string | null;
+  } | null,
+): Record<string, string> {
+  if (!m?.penalidadActiva || !m.penalidadTexto?.trim())
+    return {
+      texto: '',
+      porcentajeDiario: '',
+      tope: '',
+      diasGracia: '',
+      base: '',
+    };
+  return {
+    texto: m.penalidadTexto.trim(),
+    porcentajeDiario: m.penalidadDiaria != null ? pct(m.penalidadDiaria) : '',
+    tope: m.penalidadTope != null ? pct(m.penalidadTope) : '',
+    diasGracia: String(m.penalidadDiasGracia),
+    base:
+      m.penalidadBase === 'CONTRATO'
+        ? 'el valor total del contrato'
+        : 'el valor del hito atrasado',
+  };
 }
 
 /** Data for the preview when the company has no contract of that kind yet. */
@@ -488,6 +554,14 @@ export function contextoEjemplo(): ContextoDocumento {
     ],
     hitos: [fila('hitos')],
     modificaciones: [],
+    penalidad: {
+      texto:
+        'En caso de atraso injustificado, el CONTRATISTA reconocerá una penalidad del 0,5 % del valor del hito atrasado por cada día calendario, hasta el 10 % del valor del contrato.',
+      porcentajeDiario: '0,5',
+      tope: '10',
+      diasGracia: '0',
+      base: 'el valor del hito atrasado',
+    },
     clausulas:
       'PRIMERA. CONFIDENCIALIDAD. El contratista guardará reserva sobre la información recibida.\nSEGUNDA. INDEMNIDAD. El contratista mantendrá indemne al contratante.',
     fechaGeneracion: fechaLarga(new Date()),

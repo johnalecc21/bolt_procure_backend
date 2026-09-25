@@ -306,6 +306,9 @@ export function plantillaEjemplo(
       ],
     ),
     parrafo(''),
+    parrafo(
+      '{{#penalidad.texto}}PENALIDADES POR INCUMPLIMIENTO: {{penalidad.texto}}{{/penalidad.texto}}',
+    ),
     parrafo('CLÁUSULAS', { negrita: true }),
     parrafo('{{clausulas}}'),
     parrafo(''),
