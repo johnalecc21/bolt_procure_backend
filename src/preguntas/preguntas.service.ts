@@ -22,13 +22,13 @@ export class PreguntasService {
       const proveedorId = await this.proveedores.findIdForUser(user.sub);
       return this.prisma.pregunta.findMany({
         where: { requerimientoId, proveedorId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
       });
     }
     return this.prisma.pregunta.findMany({
       where: { requerimientoId, requerimiento: { companyId: user.companyId } },
       include: { proveedor: { select: { nombre: true } } },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

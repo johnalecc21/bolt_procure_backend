@@ -23,7 +23,7 @@ export class InternoService {
     return this.prisma.casoConsultor.findMany({
       where: consultorId ? { consultorId } : undefined,
       include: { company: true },
-      orderBy: [{ prioridad: 'desc' }, { createdAt: 'asc' }],
+      orderBy: [{ prioridad: 'desc' }, { createdAt: 'desc' }],
       // Growth guard-rail, not page size.
       take: 200,
     });

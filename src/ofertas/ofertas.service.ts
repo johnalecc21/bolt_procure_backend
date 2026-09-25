@@ -38,6 +38,7 @@ export class OfertasService {
         proveedor: true,
         items: { select: { itemId: true, precioUnitario: true } },
       },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

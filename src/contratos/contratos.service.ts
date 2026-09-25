@@ -173,7 +173,7 @@ export class ContratosService {
     const [items, total] = await Promise.all([
       this.prisma.contrato.findMany({
         where,
-        orderBy: { vigenciaFin: 'asc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (params.page - 1) * params.limit,
         take: params.limit,
         include: {
@@ -214,7 +214,7 @@ export class ContratosService {
   list(companyId: string) {
     return this.prisma.contrato.findMany({
       where: { companyId, estado: { in: ESTADOS_OPERATIVOS } },
-      orderBy: { vigenciaFin: 'asc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 200,
       select: {
         id: true,
@@ -265,7 +265,7 @@ export class ContratosService {
     const proveedorId = await this.proveedores.findIdForUser(userId);
     const contratos = await this.prisma.contrato.findMany({
       where: { proveedorId },
-      orderBy: { vigenciaFin: 'asc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: {
         hitos: { orderBy: { orden: 'asc' } },
         company: true,

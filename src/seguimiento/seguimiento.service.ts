@@ -48,7 +48,7 @@ export class SeguimientoService {
   async list(companyId: string) {
     const contratos = await this.prisma.contrato.findMany({
       where: { companyId },
-      orderBy: { vigenciaFin: 'asc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       include: { hitos: { orderBy: { orden: 'asc' } } },
       // Growth guard-rail, not page size — same cap as contratos.service.ts's
       // list(), which queries the same table.

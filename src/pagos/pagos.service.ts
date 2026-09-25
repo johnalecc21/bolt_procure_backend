@@ -108,7 +108,7 @@ export class PagosService implements OnModuleInit {
     const pagos = await this.prisma.pagoPO.findMany({
       where: { proveedorId },
       include: INCLUDE_PAGO,
-      orderBy: { fechaPagoPactada: 'asc' },
+      orderBy: [{ fechaPagoPactada: 'desc' }, { id: 'desc' }],
       take: 300,
     });
     const ahora = new Date();

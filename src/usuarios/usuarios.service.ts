@@ -19,6 +19,8 @@ export class UsuariosService {
     const memberships = await this.prisma.companyMembership.findMany({
       where: { companyId },
       include: { user: true },
+      // Newest users first.
+      orderBy: { user: { createdAt: 'desc' } },
     });
     return memberships.map((m) => ({
       id: m.user.id,

@@ -95,7 +95,7 @@ export class AprobacionesService {
           },
         },
       },
-      orderBy: [{ urgente: 'desc' }, { createdAt: 'asc' }],
+      orderBy: [{ urgente: 'desc' }, { createdAt: 'desc' }],
     });
     return items.filter((a) => this.esElegible(a, role));
   }

@@ -36,7 +36,7 @@ export class CuentasPorPagarService {
     const pagos = await this.prisma.pagoPO.findMany({
       where: { contrato: { companyId } },
       include: INCLUDE_PAGO,
-      orderBy: { fechaPagoPactada: 'asc' },
+      orderBy: [{ fechaPagoPactada: 'desc' }, { id: 'desc' }],
       take: 500,
     });
     const ahora = new Date();

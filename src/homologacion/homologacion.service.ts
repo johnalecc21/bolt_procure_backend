@@ -218,7 +218,7 @@ export class HomologacionService {
         ],
       },
       include: { documentos: true, proveedor: true, verificaciones: { orderBy: { lista: 'asc' } } },
-      orderBy: { fechaSolicitud: 'asc' },
+      orderBy: { fechaSolicitud: 'desc' },
       // Cross-tenant queue with no natural per-caller scope to bound it by —
       // growth guard-rail, not page size.
       take: 200,
