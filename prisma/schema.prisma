@@ -1231,6 +1231,8 @@ enum TipoPlantilla {
   CONTRATO_MARCO
   /// Orden de compra, sola o emitida bajo un marco.
   ORDEN_COMPRA
+  /// Carta que comunica la adjudicación al proveedor, antes de firmar.
+  CARTA_ADJUDICACION
 }
 
 /// A company's own Word template, filled with the contract data on signing.

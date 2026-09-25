@@ -29,14 +29,16 @@ import {
   VistaPreviaDto,
 } from './dto/plantillas.dto';
 
-function archivo(
+/** Sends a generated file as a download. */
+export function archivo(
   res: Response,
   f: { contenido: Buffer; nombre: string; mime: string },
 ) {
   res.set({
     'Content-Type': f.mime,
     'Content-Disposition': `attachment; filename="${f.nombre}"`,
-    'Access-Control-Expose-Headers': 'Content-Disposition, X-Datos-Reales',
+    'Access-Control-Expose-Headers':
+      'Content-Disposition, X-Datos-Reales, X-Plantilla',
   });
   return new StreamableFile(f.contenido);
 }

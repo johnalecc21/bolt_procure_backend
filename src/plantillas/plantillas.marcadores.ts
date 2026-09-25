@@ -284,6 +284,31 @@ export const GRUPOS_MARCADORES: GrupoMarcadores[] = [
     ],
   },
   {
+    titulo: 'Adjudicación (carta de adjudicación)',
+    marcadores: [
+      {
+        clave: 'adjudicacion.fecha',
+        descripcion: 'Fecha de la adjudicación',
+        ejemplo: '24 de septiembre de 2026',
+      },
+      {
+        clave: 'adjudicacion.proceso',
+        descripcion: 'Código del proceso de compra',
+        ejemplo: 'REQ-0042',
+      },
+      {
+        clave: 'adjudicacion.alcance',
+        descripcion: 'Qué se adjudica: todo el proceso o parte de los ítems',
+        ejemplo: 'la totalidad del proceso',
+      },
+      {
+        clave: 'adjudicacion.estado',
+        descripcion: 'Estado de la adjudicación',
+        ejemplo: 'Confirmada, pendiente de firma',
+      },
+    ],
+  },
+  {
     titulo: 'Otros',
     marcadores: [
       {
@@ -478,6 +503,8 @@ export interface ContextoDocumento {
   empresa: Record<string, string>;
   proveedor: Record<string, string>;
   contrato: Record<string, string>;
+  /** Filled for award letters; for contracts, from the award behind them. */
+  adjudicacion: Record<string, string>;
   lineas: Record<string, string>[];
   hitos: Record<string, string>[];
   modificaciones: Record<string, string>[];
@@ -540,6 +567,7 @@ export function contextoEjemplo(): ContextoDocumento {
     empresa: plano('empresa'),
     proveedor: plano('proveedor'),
     contrato: plano('contrato'),
+    adjudicacion: plano('adjudicacion'),
     lineas: [
       fila('lineas'),
       {

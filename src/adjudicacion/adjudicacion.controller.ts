@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { PortalOnly } from '../common/decorators/portal.decorator';
@@ -8,15 +9,42 @@ import { AdjudicacionService } from './adjudicacion.service';
 import { CreateAdjudicacionDto } from './dto/create-adjudicacion.dto';
 import {
   AdjudicacionObjetivoDto,
+  CartaAdjudicacionDto,
   FirmarAdjudicacionDto,
 } from './dto/firmar-adjudicacion.dto';
+import { PlantillasService } from '../plantillas/plantillas.service';
+import { archivo } from '../plantillas/plantillas.controller';
 import type { AuthenticatedUser } from '../auth/types';
 
 @ApiTags('adjudicacion')
 @PortalOnly('CLIENTE')
 @Controller('adjudicacion')
 export class AdjudicacionController {
-  constructor(private service: AdjudicacionService) {}
+  constructor(
+    private service: AdjudicacionService,
+    private plantillas: PlantillasService,
+  ) {}
+
+  /**
+   * The award letter for one supplier, from the company's letter template
+   * (Plantillas y documentos) or Procurex's default one.
+   */
+  @Get(':requerimientoId/carta')
+  async carta(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('requerimientoId') requerimientoId: string,
+    @Query() dto: CartaAdjudicacionDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const f = await this.plantillas.cartaAdjudicacion(
+      user.companyId,
+      requerimientoId,
+      dto.adjudicacionId,
+      dto.formato,
+    );
+    res.set('X-Plantilla', f.plantilla ? encodeURIComponent(f.plantilla) : '');
+    return archivo(res, f);
+  }
 
   @Get(':requerimientoId')
   findOne(

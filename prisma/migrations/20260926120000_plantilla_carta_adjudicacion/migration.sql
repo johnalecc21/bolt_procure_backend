@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "TipoPlantilla" ADD VALUE 'CARTA_ADJUDICACION';
+

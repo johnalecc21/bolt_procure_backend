@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { archivo } from '../plantillas/plantillas.controller';
 import { ApiTags } from '@nestjs/swagger';
 import { PortalOnly } from '../common/decorators/portal.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -18,6 +20,19 @@ export class OfertasController {
     @Param('id') id: string,
   ) {
     return this.service.listByRequerimiento(user.companyId, id);
+  }
+
+  @PortalOnly('PROVEEDOR')
+  @Get('mine/:requerimientoId/carta')
+  async carta(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('requerimientoId') requerimientoId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return archivo(
+      res,
+      await this.service.cartaAdjudicacion(user.sub, requerimientoId),
+    );
   }
 
   @PortalOnly('PROVEEDOR')

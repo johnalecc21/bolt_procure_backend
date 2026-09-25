@@ -235,8 +235,9 @@ function firmas() {
  * its letterhead and clauses, and uploads it back.
  */
 export function plantillaEjemplo(
-  tipo: 'CONTRATO_MARCO' | 'ORDEN_COMPRA',
+  tipo: 'CONTRATO_MARCO' | 'ORDEN_COMPRA' | 'CARTA_ADJUDICACION',
 ): Buffer {
+  if (tipo === 'CARTA_ADJUDICACION') return empaquetar(cuerpoCarta());
   const marco = tipo === 'CONTRATO_MARCO';
   const cuerpo = [
     parrafo('{{empresa.razonSocial}}', {
@@ -318,6 +319,83 @@ export function plantillaEjemplo(
     parrafo(''),
     firmas(),
   ].join('');
+  return empaquetar(cuerpo);
+}
+
+/**
+ * Procurex's award letter: used as is when the company has no letter
+ * template of its own, and downloadable as the starting point for one.
+ */
+function cuerpoCarta() {
+  return [
+    parrafo('{{empresa.razonSocial}}', {
+      negrita: true,
+      tam: 28,
+      centro: true,
+    }),
+    parrafo(
+      'NIT {{empresa.nit}}{{#empresa.direccion}} · {{empresa.direccion}}{{/empresa.direccion}}{{#empresa.ciudad}} · {{empresa.ciudad}}{{/empresa.ciudad}}',
+      { centro: true },
+    ),
+    parrafo(''),
+    parrafo(
+      '{{#empresa.ciudad}}{{empresa.ciudad}}, {{/empresa.ciudad}}{{adjudicacion.fecha}}',
+    ),
+    parrafo(''),
+    parrafo('Señores'),
+    parrafo('{{proveedor.razonSocial}}', { negrita: true }),
+    parrafo('NIT {{proveedor.nit}}'),
+    parrafo(
+      '{{#proveedor.direccion}}{{proveedor.direccion}}{{/proveedor.direccion}}',
+    ),
+    parrafo(''),
+    parrafo('Asunto: Carta de adjudicación {{contrato.numeroOrdenCompra}}', {
+      negrita: true,
+    }),
+    parrafo(''),
+    parrafo('Respetados señores:'),
+    parrafo(
+      'Como resultado del proceso de compra {{adjudicacion.proceso}}, «{{contrato.objeto}}», {{empresa.razonSocial}} les comunica que les ha adjudicado {{adjudicacion.alcance}} en las siguientes condiciones:',
+    ),
+    parrafo(''),
+    parrafo(
+      'Valor adjudicado: {{contrato.valor}} ({{contrato.valorEnLetras}}).',
+    ),
+    parrafo('Plazo de entrega: {{contrato.plazoEntregaDias}} días.'),
+    parrafo(
+      'Forma de pago: a {{contrato.condicionesPagoDias}} días de radicada la factura.',
+    ),
+    parrafo('Garantía: {{contrato.garantiaMeses}} meses.'),
+    parrafo(''),
+    parrafo('ÍTEMS ADJUDICADOS', { negrita: true }),
+    tabla(
+      ['#', 'Descripción', 'Cantidad', 'Unidad', 'Precio unitario', 'Subtotal'],
+      [
+        '{{#lineas}}{{numero}}',
+        '{{descripcion}}',
+        '{{cantidad}}',
+        '{{unidad}}',
+        '{{precioUnitario}}',
+        '{{subtotal}}{{/lineas}}',
+      ],
+    ),
+    parrafo(''),
+    parrafo(
+      'En los próximos días recibirán, a través del portal de proveedores, la orden de compra o el contrato para su firma. Esta carta no reemplaza ese documento.',
+    ),
+    parrafo(''),
+    parrafo('Cordialmente,'),
+    parrafo(''),
+    parrafo(''),
+    parrafo('______________________________'),
+    parrafo('{{empresa.representanteLegal}}', { negrita: true }),
+    parrafo('{{empresa.cargoRepresentante}}'),
+    parrafo('{{empresa.razonSocial}}'),
+  ].join('');
+}
+
+/** Wraps a document body in the minimal parts of a valid .docx. */
+function empaquetar(cuerpo: string): Buffer {
   const zip = new PizZip();
   zip.file(
     '[Content_Types].xml',

@@ -1,10 +1,15 @@
-# Plantillas de contratos y órdenes de compra
+# Plantillas de contratos, órdenes de compra y cartas de adjudicación
 
-Cada empresa puede usar **sus propios formatos** de orden de compra y de
-contrato marco. Procurex los llena con los datos reales al firmar, los
-convierte a PDF y los guarda como documento vigente del contrato. Si una
-empresa no tiene plantilla, se usa el formato de Procurex con su marca
-(logo, color, datos, cláusulas y firma).
+Cada empresa puede usar **sus propios formatos** de orden de compra, de
+contrato marco y de **carta de adjudicación**. Procurex los llena con los
+datos reales, los convierte a PDF y, en el caso de contratos y órdenes, los
+guarda como documento vigente. Si una empresa no tiene plantilla, se usa el
+formato de Procurex con los datos de la empresa (marca, datos, cláusulas y
+firma).
+
+Cada tipo trae su **formato de Procurex en Word** (botón *Formato de Procurex*
+en cada sección): la empresa lo descarga, lo edita con su membrete y su
+redacción, y lo sube como plantilla propia.
 
 Pantalla: **Cliente › Plantillas y documentos** (solo Admin Cliente).
 
@@ -39,6 +44,7 @@ Pantalla: **Cliente › Plantillas y documentos** (solo Admin Cliente).
 | Emitir una PO bajo un contrato marco | Orden de compra (`{{contrato.contratoMarco}}` trae el marco) | Versión 1 de la PO |
 | Prórroga o cambio de valor | La misma | Versión nueva con los datos y la modificación |
 | Botón **Generar desde plantilla** en la ficha del contrato | La activa | Versión nueva |
+| Botón **Carta de adjudicación** en la adjudicación (comprador) o en el historial (proveedor, una vez confirmada) | Carta de adjudicación, o el formato de Procurex si no hay una activa | PDF para descargar (no se guarda como versión) |
 
 Cada versión generada guarda el **PDF**, que es el vigente y el que ve el
 proveedor, y el **Word llenado**, que jurídica puede descargar y editar. Si
@@ -76,6 +82,11 @@ marcadores** (sale de `src/plantillas/plantillas.marcadores.ts`). En resumen:
   Procurex no redacta ni impone ninguna penalidad: el texto lo escribe la
   empresa. Los mismos números alimentan la penalidad estimada de la ficha del
   contrato.
+- `adjudicacion.*`: fecha, proceso (código del requerimiento), alcance ("la
+  totalidad del proceso" o "2 de los 5 ítems del proceso") y estado. En la
+  carta, `contrato.*` trae los datos de lo adjudicado (número de PO, objeto,
+  valor, valor en letras, plazo, forma de pago y garantía) y `{{#lineas}}` los
+  ítems adjudicados a ese proveedor.
 - `{{clausulas}}` (las cláusulas de la empresa) y `{{fechaGeneracion}}`.
 
 Las fechas salen en formato largo ("25 de septiembre de 2026") y los valores

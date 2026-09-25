@@ -45,6 +45,22 @@ describe('plantillas.motor', () => {
     }
   });
 
+  it("Procurex's award letter validates and fills like a company template", () => {
+    const base = plantillaEjemplo('CARTA_ADJUDICACION');
+    const r = inspeccionar(base);
+    expect(r.errores).toEqual([]);
+    expect(r.advertencias).toEqual([]);
+    expect(r.marcadores).toEqual(
+      expect.arrayContaining(['adjudicacion.fecha', 'proveedor.nit', 'lineas']),
+    );
+    const t = texto(llenar(base, contextoEjemplo()));
+    expect(t).toContain('Carta de adjudicación PO-2026-0042');
+    expect(t).toContain('Montajes Industriales S.A.S.');
+    expect(t).toContain('la totalidad del proceso');
+    expect(t).toContain('Correa A-42');
+    expect(t).not.toContain('{{');
+  });
+
   it('fills fields, repeats table rows and prints conditionals', () => {
     const t = texto(
       llenar(plantillaEjemplo('ORDEN_COMPRA'), contextoEjemplo()),

@@ -57,6 +57,13 @@ const TIPO_MODIFICACION: Record<string, string> = {
 export const NOMBRE_TIPO: Record<TipoPlantilla, string> = {
   CONTRATO_MARCO: 'Contrato marco',
   ORDEN_COMPRA: 'Orden de compra',
+  CARTA_ADJUDICACION: 'Carta de adjudicación',
+};
+
+const ARCHIVO_EJEMPLO: Record<TipoPlantilla, string> = {
+  CONTRATO_MARCO: 'contrato-marco',
+  ORDEN_COMPRA: 'orden-de-compra',
+  CARTA_ADJUDICACION: 'carta-de-adjudicacion',
 };
 
 /**
@@ -263,7 +270,7 @@ export class PlantillasService implements OnModuleInit {
   ejemplo(tipo: TipoPlantilla) {
     return {
       contenido: plantillaEjemplo(tipo),
-      nombre: `plantilla-${tipo === 'CONTRATO_MARCO' ? 'contrato-marco' : 'orden-de-compra'}.docx`,
+      nombre: `plantilla-${ARCHIVO_EJEMPLO[tipo]}.docx`,
       mime: MIME_DOCX,
     };
   }
@@ -279,6 +286,27 @@ export class PlantillasService implements OnModuleInit {
     formato: 'pdf' | 'docx' = 'pdf',
   ) {
     const p = await this.plantilla(companyId, id);
+    if (p.tipo === TipoPlantilla.CARTA_ADJUDICACION) {
+      const adj = await this.prisma.adjudicacion.findFirst({
+        where: {
+          requerimiento: {
+            companyId,
+            ...(p.categoria ? { categoria: p.categoria } : {}),
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      const datos = adj
+        ? await this.contextoCarta(adj.id)
+        : await this.contextoDeEjemplo(companyId);
+      return this.entregar(
+        llenar(await this.storage.descargar(BUCKET, p.storagePath), datos),
+        `vista-previa-${p.nombre.replace(/[^\w-]+/g, '-').toLowerCase()}`,
+        formato,
+        !!adj,
+      );
+    }
     const contrato = contratoId
       ? await this.prisma.contrato.findFirst({
           where: { id: contratoId, companyId },
@@ -304,7 +332,21 @@ export class PlantillasService implements OnModuleInit {
       await this.storage.descargar(BUCKET, p.storagePath),
       datos,
     );
-    const base = `vista-previa-${p.nombre.replace(/[^\w-]+/g, '-').toLowerCase()}`;
+    return this.entregar(
+      docx,
+      `vista-previa-${p.nombre.replace(/[^\w-]+/g, '-').toLowerCase()}`,
+      formato,
+      !!contrato,
+    );
+  }
+
+  /** The filled document as PDF, or as Word when asked or when PDF is unavailable. */
+  private async entregar(
+    docx: Buffer,
+    base: string,
+    formato: 'pdf' | 'docx',
+    conDatosReales: boolean,
+  ) {
     if (formato === 'pdf') {
       const pdf = await this.pdf.aPdf(docx, `${base}.docx`);
       if (pdf)
@@ -312,14 +354,156 @@ export class PlantillasService implements OnModuleInit {
           contenido: pdf,
           nombre: `${base}.pdf`,
           mime: 'application/pdf',
-          conDatosReales: !!contrato,
+          conDatosReales,
         };
     }
     return {
       contenido: docx,
       nombre: `${base}.docx`,
       mime: MIME_DOCX,
-      conDatosReales: !!contrato,
+      conDatosReales,
+    };
+  }
+
+  // ------------------------------------------------- carta de adjudicación
+
+  /**
+   * The award letter for one supplier of a process: the company's active
+   * letter template (its category first) or, without one, Procurex's letter
+   * filled with the company's details. PDF when the converter is available.
+   */
+  async cartaAdjudicacion(
+    companyId: string,
+    requerimientoId: string,
+    adjudicacionId?: string,
+    formato: 'pdf' | 'docx' = 'pdf',
+  ) {
+    const adj = await this.prisma.adjudicacion.findFirst({
+      where: {
+        requerimientoId,
+        requerimiento: { companyId },
+        ...(adjudicacionId ? { id: adjudicacionId } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        poId: true,
+        requerimiento: { select: { categoria: true } },
+      },
+    });
+    if (!adj) throw new NotFoundException('Adjudicación no encontrada.');
+    const plantilla = await this.plantillaPara(
+      companyId,
+      TipoPlantilla.CARTA_ADJUDICACION,
+      adj.requerimiento.categoria,
+    );
+    const base = plantilla
+      ? await this.storage.descargar(BUCKET, plantilla.storagePath)
+      : plantillaEjemplo(TipoPlantilla.CARTA_ADJUDICACION);
+    const docx = llenar(base, await this.contextoCarta(adj.id));
+    const doc = await this.entregar(
+      docx,
+      `carta-adjudicacion-${adj.poId.replace(/[^\w-]+/g, '-')}`,
+      formato,
+      true,
+    );
+    return { ...doc, plantilla: plantilla?.nombre ?? null };
+  }
+
+  /** What an award letter can print: the award, its lines and both parties. */
+  async contextoCarta(adjudicacionId: string): Promise<ContextoDocumento> {
+    const a = await this.prisma.adjudicacion.findUniqueOrThrow({
+      where: { id: adjudicacionId },
+      include: {
+        proveedor: { include: { user: { select: { email: true } } } },
+        lineas: { include: { item: true } },
+        requerimiento: {
+          include: {
+            centroCosto: { select: { codigo: true, nombre: true } },
+            _count: { select: { items: true } },
+          },
+        },
+      },
+    });
+    const r = a.requerimiento;
+    const { empresa, clausulas, penalidad } = await this.marcaDe(r.companyId);
+    const $ = (v: number) => dinero(v, r.moneda);
+    const lineas = a.lineas.length
+      ? [...a.lineas]
+          .sort((x, y) => x.item.orden - y.item.orden)
+          .map((l, i) => ({
+            numero: String(i + 1),
+            descripcion: l.item.descripcion,
+            especificacion: l.item.especificacion ?? '',
+            cantidad: numero(l.cantidad),
+            unidad: l.item.unidad,
+            precioUnitario: $(l.precioUnitario),
+            subtotal: $(l.subtotal),
+          }))
+      : [
+          {
+            numero: '1',
+            descripcion: r.titulo,
+            especificacion: '',
+            cantidad: '1',
+            unidad: 'global',
+            precioUnitario: $(a.precioFinal),
+            subtotal: $(a.precioFinal),
+          },
+        ];
+    const parcial =
+      a.lineas.length > 0 && a.lineas.length < r._count.items
+        ? `${a.lineas.length} de los ${r._count.items} ítems del proceso`
+        : 'la totalidad del proceso';
+    return {
+      empresa,
+      proveedor: {
+        razonSocial: a.proveedor.nombre,
+        nit: a.proveedor.nit ?? '',
+        direccion: a.proveedor.ubicacion ?? '',
+        email: a.proveedor.emailContacto ?? a.proveedor.user?.email ?? '',
+        telefono: a.proveedor.telefonoContacto ?? '',
+      },
+      contrato: {
+        codigo: a.poId,
+        numeroOrdenCompra: a.poId,
+        tipo: 'Carta de adjudicación',
+        objeto: r.titulo,
+        descripcion: r.descripcion ?? '',
+        categoria: r.categoria,
+        requerimiento: formatRequerimientoCodigo(r.numero),
+        contratoMarco: '',
+        centroCosto: r.centroCosto
+          ? `${r.centroCosto.codigo} · ${r.centroCosto.nombre}`
+          : '',
+        fechaFirma: '',
+        vigenciaInicio: '',
+        vigenciaFin: '',
+        duracionDias: '',
+        moneda: r.moneda,
+        valor: $(a.precioFinal),
+        valorEnLetras: valorEnLetras(a.precioFinal, r.moneda),
+        condicionesPagoDias: String(a.condicionesPagoDias),
+        plazoEntregaDias: String(a.plazoDias),
+        garantiaMeses: String(a.garantiaMeses),
+        estado: '',
+      },
+      adjudicacion: {
+        fecha: fechaLarga(a.createdAt),
+        proceso: formatRequerimientoCodigo(r.numero),
+        alcance: parcial,
+        estado: a.firmado
+          ? 'Firmada'
+          : a.confirmada
+            ? 'Confirmada, pendiente de firma'
+            : 'En preparación',
+      },
+      lineas,
+      hitos: [],
+      modificaciones: [],
+      penalidad,
+      clausulas,
+      fechaGeneracion: fechaLarga(new Date()),
     };
   }
 
@@ -470,6 +654,14 @@ export class PlantillasService implements OnModuleInit {
         plazoEntregaDias: condiciones ? String(condiciones.plazoDias) : '',
         garantiaMeses: condiciones ? String(condiciones.garantiaMeses) : '',
         estado: ESTADO_LABEL[c.estado] ?? c.estado,
+      },
+      adjudicacion: {
+        fecha: adj ? fechaLarga(adj.createdAt) : '',
+        proceso: c.requerimiento
+          ? formatRequerimientoCodigo(c.requerimiento.numero)
+          : '',
+        alcance: '',
+        estado: adj ? 'Firmada' : '',
       },
       lineas,
       hitos: c.hitos.map((h, i) => ({

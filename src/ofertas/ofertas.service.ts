@@ -14,6 +14,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { formatRequerimientoCodigo } from '../common/utils/codigo.util';
 import { ProveedoresService } from '../proveedores/proveedores.service';
+import { PlantillasService } from '../plantillas/plantillas.service';
 import { UpsertOfertaDto } from './dto/upsert-oferta.dto';
 import { calcularCompetencia } from '../analitica/competencia.util';
 import { resultadoProveedor } from '../adjudicacion/resultado.util';
@@ -24,7 +25,29 @@ export class OfertasService {
   constructor(
     private prisma: PrismaService,
     private proveedores: ProveedoresService,
+    private plantillas: PlantillasService,
   ) {}
+
+  /**
+   * The winning supplier's copy of its award letter, in the buyer's own
+   * format when the buyer has one. Only once the award is confirmed.
+   */
+  async cartaAdjudicacion(userId: string, requerimientoId: string) {
+    const proveedorId = await this.proveedores.findIdForUser(userId);
+    const adj = await this.prisma.adjudicacion.findFirst({
+      where: { requerimientoId, proveedorId, confirmada: true },
+      select: { id: true, requerimiento: { select: { companyId: true } } },
+    });
+    if (!adj)
+      throw new NotFoundException(
+        'No tienes una adjudicación en este proceso.',
+      );
+    return this.plantillas.cartaAdjudicacion(
+      adj.requerimiento.companyId,
+      requerimientoId,
+      adj.id,
+    );
+  }
 
   async listByRequerimiento(companyId: string, requerimientoId: string) {
     const req = await this.prisma.requerimiento.findFirst({
