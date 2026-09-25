@@ -7,8 +7,6 @@ import {
   TipoContrato,
   EstadoContrato,
   TipoRegla,
-  Prioridad,
-  EstadoCaso,
 } from '@prisma/client';
 import { createClient } from '@supabase/supabase-js';
 import { DOCUMENTOS_HOMOLOGACION_INICIALES } from '../src/homologacion/homologacion-documentos.const';
@@ -309,32 +307,6 @@ async function main() {
         { contratoId: 'CTO-2024-0042', label: 'Migración fase 1 (5 servidores)', comprometido: new Date('2024-08-30'), real: new Date('2024-08-29'), estado: 'COMPLETADO', orden: 1 },
         { contratoId: 'CTO-2024-0042', label: 'Migración fase 2 (10 servidores)', comprometido: new Date('2024-09-15'), estado: 'EN_RIESGO', orden: 2 },
         { contratoId: 'CTO-2024-0042', label: 'Entrega final y cierre', comprometido: new Date('2024-09-23'), estado: 'PENDIENTE', orden: 3 },
-      ],
-    });
-  }
-
-  // --- Casos consultor ---------------------------------------------------
-  const casosCount = await prisma.casoConsultor.count();
-  if (casosCount === 0) {
-    await prisma.casoConsultor.createMany({
-      data: [
-        { consultorId: anaConsultora.id, companyId: acme.id, tipo: 'Revisión RFP', prioridad: Prioridad.ALTA, estado: EstadoCaso.EN_PROGRESO },
-        { consultorId: anaConsultora.id, companyId: techcorp.id, tipo: 'Negociación', prioridad: Prioridad.MEDIA, estado: EstadoCaso.PENDIENTE },
-        { consultorId: anaConsultora.id, companyId: acme.id, tipo: 'Auditoría ahorro', prioridad: Prioridad.MEDIA, estado: EstadoCaso.PENDIENTE },
-      ],
-    });
-  }
-
-  // --- Benchmark de mercado --------------------------------------------
-  const benchmarkCount = await prisma.benchmarkEntry.count();
-  if (benchmarkCount === 0) {
-    await prisma.benchmarkEntry.createMany({
-      data: [
-        { categoria: 'TI · Cloud', region: 'LATAM', precioPromedio: 172000, muestras: 34, outlier: false },
-        { categoria: 'Materia Prima · Embalaje', region: 'LATAM', precioPromedio: 26500, muestras: 58, outlier: false },
-        { categoria: 'Servicios Generales · Limpieza', region: 'Colombia', precioPromedio: 61000, muestras: 22, outlier: false },
-        { categoria: 'Logística · Flota', region: 'LATAM', precioPromedio: 305000, muestras: 19, outlier: false },
-        { categoria: 'TI · Consultoría', region: 'LATAM', precioPromedio: 138000, muestras: 12, outlier: true },
       ],
     });
   }

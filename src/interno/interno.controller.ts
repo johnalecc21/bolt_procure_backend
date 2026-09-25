@@ -5,52 +5,37 @@ import { PortalOnly } from '../common/decorators/portal.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { InternoService } from './interno.service';
-import { ImpersonarDto } from './dto/impersonar.dto';
 import { CrearClienteDto } from './dto/crear-cliente.dto';
 import type { AuthenticatedUser } from '../auth/types';
 
+/**
+ * Procurex's own team: follows each client company as an account and adds
+ * new ones. Homologation lives in /homologacion and /riesgo. Nothing here
+ * reads or changes a company's purchase processes.
+ */
 @ApiTags('interno')
 @PortalOnly('INTERNO')
+@Roles(Role.COMPLIANCE_OPS, Role.CONSULTOR)
 @Controller('interno')
 export class InternoController {
   constructor(private service: InternoService) {}
 
-  @Get('casos')
-  listCasos(@CurrentUser() user: AuthenticatedUser) {
-    return this.service.listCasos(user.sub);
-  }
-
-  @Roles(Role.COMPLIANCE_OPS)
   @Get('clientes')
   listClientes() {
     return this.service.listClientes();
   }
 
+  @Get('clientes/:id')
+  resumenCliente(@Param('id') id: string) {
+    return this.service.resumenCliente(id);
+  }
+
   @Roles(Role.COMPLIANCE_OPS)
   @Post('clientes')
-  crearCliente(@CurrentUser() user: AuthenticatedUser, @Body() dto: CrearClienteDto) {
-    return this.service.crearCliente(dto, user.sub, user.email);
-  }
-
-  @Roles(Role.COMPLIANCE_OPS)
-  @Post('clientes/:id/impersonar')
-  impersonar(
+  crearCliente(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-    @Body() dto: ImpersonarDto,
+    @Body() dto: CrearClienteDto,
   ) {
-    return this.service.impersonar(id, user.sub, user.email, dto.motivo);
-  }
-
-  @Roles(Role.COMPLIANCE_OPS)
-  @Get('benchmark')
-  listBenchmark() {
-    return this.service.listBenchmark();
-  }
-
-  @Roles(Role.COMPLIANCE_OPS)
-  @Post('benchmark/:id/marcar-valido')
-  marcarValido(@Param('id') id: string) {
-    return this.service.marcarValido(id);
+    return this.service.crearCliente(dto, user.sub, user.email);
   }
 }

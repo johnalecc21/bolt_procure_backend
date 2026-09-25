@@ -1,4 +1,12 @@
-import { Body, Controller, ForbiddenException, Get, Put, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Put,
+  Query,
+  Res,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import type { Response } from 'express';
@@ -15,26 +23,32 @@ import type { AuthenticatedUser } from '../auth/types';
 export class AuditLogController {
   constructor(private service: AuditLogService) {}
 
-  // Shared by two different frontends (Contratos.tsx for cliente,
-  // AdminClientes.tsx for interno) with very different visibility: a cliente
-  // only ever sees their own company's trail, interno sees every company's
-  // (that's the point of the impersonation audit trail). Proveedor has no
-  // legitimate use for this endpoint at all.
+  // A company's own trail, shown in Contratos and Configuración.
   @Get()
-  list(@CurrentUser() user: AuthenticatedUser, @Query() { page = 1, limit = 20 }: PaginationQueryDto) {
-    if (user.portal === 'PROVEEDOR') {
-      throw new ForbiddenException('Este recurso no está disponible en este portal.');
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() { page = 1, limit = 20 }: PaginationQueryDto,
+  ) {
+    // Each company's trail is its own: Procurex's internal team follows
+    // companies through /interno/clientes (aggregates), never their log.
+    if (user.portal !== 'CLIENTE') {
+      throw new ForbiddenException(
+        'Este recurso no está disponible en este portal.',
+      );
     }
-    const companyId = user.portal === 'INTERNO' ? null : user.companyId;
-    return this.service.list(companyId, page, limit);
+    return this.service.list(user.companyId, page, limit);
   }
 
-  /** CSV download of the trail. Cliente: only Admin / CFO, own company. Interno: everything. */
+  /** CSV download of the company's own trail (Admin / CFO). */
   @Get('export')
-  @PortalOnly('CLIENTE', 'INTERNO')
-  @Roles(Role.ADMIN_CLIENTE, Role.APROBADOR_CFO, Role.CONSULTOR, Role.COMPLIANCE_OPS)
-  async exportar(@CurrentUser() user: AuthenticatedUser, @Query() dto: ExportarAuditoriaDto, @Res() res: Response) {
-    const companyId = user.portal === 'INTERNO' ? null : user.companyId;
+  @PortalOnly('CLIENTE')
+  @Roles(Role.ADMIN_CLIENTE, Role.APROBADOR_CFO)
+  async exportar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() dto: ExportarAuditoriaDto,
+    @Res() res: Response,
+  ) {
+    const companyId = user.companyId;
     const desde = dto.desde ? new Date(dto.desde) : undefined;
     const hasta = dto.hasta ? new Date(dto.hasta) : undefined;
     await this.service.log({
@@ -46,8 +60,15 @@ export class AuditLogController {
     });
     const fecha = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="auditoria-${fecha}.csv"`);
-    for await (const chunk of this.service.exportarCsv(companyId, desde, hasta)) {
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="auditoria-${fecha}.csv"`,
+    );
+    for await (const chunk of this.service.exportarCsv(
+      companyId,
+      desde,
+      hasta,
+    )) {
       res.write(chunk);
     }
     res.end();
@@ -63,7 +84,10 @@ export class AuditLogController {
   @Put('retencion')
   @PortalOnly('CLIENTE')
   @Roles(Role.ADMIN_CLIENTE)
-  fijarRetencion(@CurrentUser() user: AuthenticatedUser, @Body() dto: RetencionDto) {
+  fijarRetencion(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RetencionDto,
+  ) {
     return this.service.fijarRetencion(user.companyId, dto.meses, user.email);
   }
 }

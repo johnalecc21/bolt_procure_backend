@@ -151,8 +151,6 @@ export class CuentasPorPagarService {
       throw new BadRequestException(
         'Aprueba la factura del proveedor antes de registrar el pago.',
       );
-    if (pago.disputaAbierta)
-      throw new BadRequestException('La PO tiene una disputa abierta.');
     if (
       dto.soportePath &&
       !dto.soportePath.startsWith(`${pago.proveedorId}/${pago.id}/`)

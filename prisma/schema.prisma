@@ -139,18 +139,6 @@ enum EstadoHito {
   PENDIENTE
 }
 
-enum Severidad {
-  BAJA
-  MEDIA
-  ALTA
-}
-
-enum EstadoDisputa {
-  ABIERTA
-  EN_MEDIACION
-  RESUELTA
-}
-
 enum EstadoInvitacion {
   NUEVA
   VISTA
@@ -189,19 +177,6 @@ enum TipoNotificacion {
   CONTRATO
   NEGOCIACION
   PROVEEDOR
-  DISPUTA
-}
-
-enum EstadoCaso {
-  PENDIENTE
-  EN_PROGRESO
-  ESCALADO
-}
-
-enum Prioridad {
-  BAJA
-  MEDIA
-  ALTA
 }
 
 enum PlanCliente {
@@ -262,9 +237,7 @@ model Company {
   memberships       CompanyMembership[]
   requerimientos    Requerimiento[]
   contratos         Contrato[]
-  disputas          Disputa[]
   matrizReglas      MatrizAprobacionRegla[]
-  casosConsultor    CasoConsultor[]
   invitaciones      Invitacion[]
   auditLogs         AuditLogEntry[]
   evaluaciones      EvaluacionDesempeno[]
@@ -301,9 +274,6 @@ model User {
   aprobacionPasos           AprobacionPaso[]
   notificaciones            Notificacion[]
   auditLogs                 AuditLogEntry[]
-  casosConsultor            CasoConsultor[]       @relation("Consultor")
-  disputasMediadas          Disputa[]             @relation("Mediador")
-  mensajesDisputa           MensajeDisputa[]
   preguntasRespondidas      Pregunta[]            @relation("PreguntaRespondidoPor")
   evaluacionesRealizadas    EvaluacionDesempeno[]
   graficasGuardadas         GraficaGuardada[]
@@ -480,7 +450,6 @@ model ProveedorProfile {
   certificaciones      String[]
   procesosGanados      Int      @default(0)
   entregasATiempo      Int      @default(0)
-  disputasCount        Int      @default(0)
   color                String
   onboardingCompletado Boolean  @default(false)
   // Denormalized from EvaluacionDesempeno (0-100), recomputed on every new
@@ -503,7 +472,6 @@ model ProveedorProfile {
   pagos           PagoPO[]
   adjudicaciones  Adjudicacion[]
   contratos       Contrato[]
-  disputas        Disputa[]
   preguntas       Pregunta[]
   evaluaciones    EvaluacionDesempeno[]
   archivosVitrina ArchivoVitrina[]
@@ -803,45 +771,6 @@ model VersionDocumentoContrato {
 }
 
 // ---------------------------------------------------------------------------
-// Disputas
-// ---------------------------------------------------------------------------
-
-model Disputa {
-  id           String        @id @default(cuid())
-  companyId    String
-  poReferencia String
-  proveedorId  String?
-  severidad    Severidad     @default(MEDIA)
-  estado       EstadoDisputa @default(ABIERTA)
-  mediadorId   String?
-  createdAt    DateTime      @default(now())
-  resueltoAt   DateTime?
-
-  company   Company           @relation(fields: [companyId], references: [id])
-  proveedor ProveedorProfile? @relation(fields: [proveedorId], references: [id])
-  mediador  User?             @relation("Mediador", fields: [mediadorId], references: [id])
-  mensajes  MensajeDisputa[]
-
-  @@index([companyId])
-  @@map("disputas")
-}
-
-model MensajeDisputa {
-  id        String   @id @default(cuid())
-  disputaId String
-  autorId   String?
-  autor     String
-  texto     String
-  createdAt DateTime @default(now())
-
-  disputa   Disputa @relation(fields: [disputaId], references: [id], onDelete: Cascade)
-  autorUser User?   @relation(fields: [autorId], references: [id])
-
-  @@index([disputaId])
-  @@map("mensajes_disputa")
-}
-
-// ---------------------------------------------------------------------------
 // Invitaciones, pagos
 // ---------------------------------------------------------------------------
 
@@ -905,7 +834,6 @@ model PagoPO {
   fechaEmision        DateTime
   fechaPagoPactada    DateTime
   estado              EstadoPago @default(PENDIENTE)
-  disputaAbierta      Boolean    @default(false)
   // Early-payment discount agreed through SolicitudProntoPago (0 = none).
   descuentoProntoPago Int        @default(0)
   // Filled when the buyer registers the payment.
@@ -1012,39 +940,6 @@ model AuditLogEntry {
 
   @@index([companyId, createdAt])
   @@map("audit_log")
-}
-
-// ---------------------------------------------------------------------------
-// Panel interno
-// ---------------------------------------------------------------------------
-
-model CasoConsultor {
-  id          String     @id @default(cuid())
-  consultorId String
-  companyId   String
-  tipo        String
-  prioridad   Prioridad  @default(MEDIA)
-  estado      EstadoCaso @default(PENDIENTE)
-  slaVencido  Boolean    @default(false)
-  createdAt   DateTime   @default(now())
-
-  consultor User    @relation("Consultor", fields: [consultorId], references: [id])
-  company   Company @relation(fields: [companyId], references: [id])
-
-  @@index([consultorId])
-  @@index([companyId])
-  @@map("casos_consultor")
-}
-
-model BenchmarkEntry {
-  id             String  @id @default(cuid())
-  categoria      String
-  region         String
-  precioPromedio Int
-  muestras       Int
-  outlier        Boolean @default(false)
-
-  @@map("benchmark_entries")
 }
 
 // ---------------------------------------------------------------------------

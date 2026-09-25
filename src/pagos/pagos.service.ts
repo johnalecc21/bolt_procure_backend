@@ -288,10 +288,6 @@ export class PagosService implements OnModuleInit {
       throw new BadRequestException('Fecha inválida.');
     if (pago.estado === EstadoPago.PAGADO)
       throw new ConflictException('Este pago ya fue registrado.');
-    if (pago.disputaAbierta)
-      throw new BadRequestException(
-        'No disponible: la PO tiene una disputa abierta.',
-      );
     if (pago.descuentoProntoPago > 0)
       throw new ConflictException(
         'Este pago ya tiene un pronto pago acordado.',

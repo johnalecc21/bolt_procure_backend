@@ -39,7 +39,6 @@ import { NavegacionModule } from './navegacion/navegacion.module';
 import { RedModule } from './red/red.module';
 import { ContratosModule } from './contratos/contratos.module';
 import { SeguimientoModule } from './seguimiento/seguimiento.module';
-import { DisputasModule } from './disputas/disputas.module';
 import { InvitacionesModule } from './invitaciones/invitaciones.module';
 import { PagosModule } from './pagos/pagos.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
@@ -181,7 +180,6 @@ import { EmailModule } from './email/email.module';
     RedModule,
     ContratosModule,
     SeguimientoModule,
-    DisputasModule,
     InvitacionesModule,
     PagosModule,
     NotificacionesModule,

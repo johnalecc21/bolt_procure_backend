@@ -9,7 +9,6 @@ const ACCION_POR_TIPO: Record<TipoNotificacion, string> = {
   CONTRATO: 'Ver contrato',
   NEGOCIACION: 'Ir a la negociación',
   PROVEEDOR: 'Abrir Procurex',
-  DISPUTA: 'Ver disputa',
 };
 
 const DEFAULT_LIST_LIMIT = 50;

@@ -304,7 +304,6 @@ export class AnaliticaService {
         fechaEmision: true,
         fechaPagoPactada: true,
         estado: true,
-        disputaAbierta: true,
         proveedor: { select: { nombre: true } },
         contrato: {
           select: {
@@ -327,7 +326,6 @@ export class AnaliticaService {
       emision: p.fechaEmision.toISOString(),
       pactada: p.fechaPagoPactada.toISOString(),
       estado: p.estado,
-      disputa: p.disputaAbierta,
     }));
   }
 
