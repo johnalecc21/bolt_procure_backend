@@ -13,6 +13,21 @@ import { SupabaseService } from '../supabase/supabase.service';
 export class StorageService {
   constructor(private supabase: SupabaseService) {}
 
+  /**
+   * Callers authorize a path by its prefix (`${companyId}/…`); a `..` segment
+   * or a leading slash could step out of that prefix, so they are refused.
+   */
+  private rutaSegura(path: string): string {
+    if (
+      !path ||
+      path.startsWith('/') ||
+      path.split('/').some((p) => p === '..' || p === '.')
+    ) {
+      throw new BadRequestException('Ruta de archivo inválida.');
+    }
+    return path;
+  }
+
   safeFilename(filename: string): string {
     return filename.replace(/[^a-zA-Z0-9.\-_]/g, '_');
   }
@@ -20,7 +35,7 @@ export class StorageService {
   async createUploadUrl(bucket: string, path: string) {
     const { data, error } = await this.supabase.admin.storage
       .from(bucket)
-      .createSignedUploadUrl(path, { upsert: true });
+      .createSignedUploadUrl(this.rutaSegura(path), { upsert: true });
     if (error || !data) {
       throw new BadRequestException(
         error?.message ?? 'No se pudo preparar la subida del archivo.',
@@ -36,7 +51,7 @@ export class StorageService {
   ) {
     const { data, error } = await this.supabase.admin.storage
       .from(bucket)
-      .createSignedUrl(path, expiresInSeconds);
+      .createSignedUrl(this.rutaSegura(path), expiresInSeconds);
     if (error || !data) {
       throw new BadRequestException(
         error?.message ?? 'No se pudo generar el enlace de descarga.',
@@ -55,7 +70,10 @@ export class StorageService {
     if (paths.length === 0) return result;
     const { data, error } = await this.supabase.admin.storage
       .from(bucket)
-      .createSignedUrls(paths, expiresInSeconds);
+      .createSignedUrls(
+        paths.map((p) => this.rutaSegura(p)),
+        expiresInSeconds,
+      );
     if (error || !data) {
       throw new BadRequestException(
         error?.message ?? 'No se pudieron generar los enlaces de los archivos.',
@@ -71,7 +89,7 @@ export class StorageService {
   async descargar(bucket: string, path: string): Promise<Buffer> {
     const { data, error } = await this.supabase.admin.storage
       .from(bucket)
-      .download(path);
+      .download(this.rutaSegura(path));
     if (error || !data)
       throw new BadRequestException(
         error?.message ?? 'No se pudo leer el archivo subido.',
@@ -88,7 +106,7 @@ export class StorageService {
   ): Promise<void> {
     const { error } = await this.supabase.admin.storage
       .from(bucket)
-      .upload(path, contenido, { contentType, upsert: true });
+      .upload(this.rutaSegura(path), contenido, { contentType, upsert: true });
     if (error)
       throw new BadRequestException(
         `No se pudo guardar el documento: ${error.message}`,
@@ -98,7 +116,9 @@ export class StorageService {
   /** Best-effort delete — a leftover object is harmless, a failed DB delete is not. */
   async remove(bucket: string, paths: string[]): Promise<void> {
     if (paths.length === 0) return;
-    await this.supabase.admin.storage.from(bucket).remove(paths);
+    await this.supabase.admin.storage
+      .from(bucket)
+      .remove(paths.map((p) => this.rutaSegura(p)));
   }
 
   /** Creates a private bucket if it doesn't exist yet. Returns false when the bucket couldn't be checked or created. */

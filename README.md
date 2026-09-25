@@ -12,6 +12,7 @@ API real (NestJS + Prisma + PostgreSQL) para la plataforma ProcureOS. Vive como 
 - **Integración con ERP** (archivo o webhook firmado): [`docs/INTEGRACION-ERP.md`](docs/INTEGRACION-ERP.md)
 - **Plantillas de contratos y órdenes de compra** de cada empresa: [`docs/PLANTILLAS-DOCUMENTOS.md`](docs/PLANTILLAS-DOCUMENTOS.md)
 - **Logs y errores** (cómo encontrar qué falló a partir de la referencia que ve el usuario): [`docs/OBSERVABILIDAD.md`](docs/OBSERVABILIDAD.md)
+- **Seguridad** (auditoría del backend y la base de datos, qué se corrigió y qué queda pendiente): [`docs/SEGURIDAD.md`](docs/SEGURIDAD.md)
 - **Red de proveedores, tablero en vivo y riesgo continuo**: [`docs/RED-Y-RIESGO.md`](docs/RED-Y-RIESGO.md)
 - Demo gratis (Render + Vercel): [`docs/DESPLIEGUE-DEMO.md`](docs/DESPLIEGUE-DEMO.md)
 

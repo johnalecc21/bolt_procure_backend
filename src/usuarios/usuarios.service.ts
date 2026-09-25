@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Role, Portal } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -32,9 +37,22 @@ export class UsuariosService {
     }));
   }
 
+  /** Has a membership (active or not) in any company other than this one. */
+  private async perteneceAOtraEmpresa(userId: string, companyId: string) {
+    const otra = await this.prisma.companyMembership.findFirst({
+      where: { userId, companyId: { not: companyId } },
+      select: { companyId: true },
+    });
+    return !!otra;
+  }
+
   private async activeAdminCount(companyId: string) {
     return this.prisma.companyMembership.count({
-      where: { companyId, activo: true, user: { role: Role.ADMIN_CLIENTE, activo: true } },
+      where: {
+        companyId,
+        activo: true,
+        user: { role: Role.ADMIN_CLIENTE, activo: true },
+      },
     });
   }
 
@@ -42,18 +60,40 @@ export class UsuariosService {
     const email = dto.email.toLowerCase();
     const existing = await this.prisma.user.findUnique({ where: { email } });
     const yaActivo = existing
-      ? await this.prisma.companyMembership.findFirst({ where: { userId: existing.id, companyId, activo: true } })
+      ? await this.prisma.companyMembership.findFirst({
+          where: { userId: existing.id, companyId, activo: true },
+        })
       : null;
     if (!yaActivo) await this.planes.verificarUsuarios(companyId);
     const iniciales = email.split('@')[0].slice(0, 2).toUpperCase();
+
+    // The role lives on the user, not on the membership: letting a company
+    // pull in someone who already belongs elsewhere would let its admin change
+    // that person's role (and so their permissions) in the other company too.
+    // Proveedor and Procurex accounts can never join a client company.
+    if (existing) {
+      if (existing.portal !== Portal.CLIENTE) {
+        throw new ConflictException(
+          'Este correo pertenece a una cuenta de proveedor o del equipo Procurex; usa otro correo.',
+        );
+      }
+      if (await this.perteneceAOtraEmpresa(existing.id, companyId)) {
+        throw new ConflictException(
+          'Este correo ya pertenece a otra empresa en Procurex. Para compartir un usuario entre empresas, pídelo al equipo de Procurex.',
+        );
+      }
+    }
 
     let user = existing;
     if (!user) {
       // Sends a real "you've been invited" email via Supabase Auth — the
       // recipient sets their own password the first time they open the link.
-      const { data, error } = await this.supabase.admin.auth.admin.inviteUserByEmail(email);
+      const { data, error } =
+        await this.supabase.admin.auth.admin.inviteUserByEmail(email);
       if (error || !data.user) {
-        throw new ConflictException(error?.message ?? 'No se pudo invitar al usuario.');
+        throw new ConflictException(
+          error?.message ?? 'No se pudo invitar al usuario.',
+        );
       }
       user = await this.prisma.user.create({
         data: {
@@ -83,17 +123,35 @@ export class UsuariosService {
     return { id: user.id, email: user.email };
   }
 
-  async updateRole(companyId: string, userId: string, role: Role, actorNombre: string) {
+  async updateRole(
+    companyId: string,
+    userId: string,
+    role: Role,
+    actorNombre: string,
+  ) {
     const membership = await this.prisma.companyMembership.findUniqueOrThrow({
       where: { userId_companyId: { userId, companyId } },
       include: { user: true },
     });
 
-    if (membership.user.role === Role.ADMIN_CLIENTE && role !== Role.ADMIN_CLIENTE) {
+    if (
+      membership.user.role === Role.ADMIN_CLIENTE &&
+      role !== Role.ADMIN_CLIENTE
+    ) {
       const admins = await this.activeAdminCount(companyId);
       if (admins <= 1) {
-        throw new BadRequestException('No puedes quitar el rol Admin al último administrador activo.');
+        throw new BadRequestException(
+          'No puedes quitar el rol Admin al último administrador activo.',
+        );
       }
+    }
+
+    // A user shared with other companies has one role everywhere: only
+    // Procurex's team may change it, never one company's admin.
+    if (await this.perteneceAOtraEmpresa(userId, companyId)) {
+      throw new ForbiddenException(
+        'Este usuario también pertenece a otra empresa; su rol solo lo puede cambiar el equipo de Procurex.',
+      );
     }
 
     const rolAnterior = membership.user.role;
@@ -116,7 +174,9 @@ export class UsuariosService {
     if (membership.user.role === Role.ADMIN_CLIENTE && membership.activo) {
       const admins = await this.activeAdminCount(companyId);
       if (admins <= 1) {
-        throw new BadRequestException('No puedes desactivar al último administrador activo.');
+        throw new BadRequestException(
+          'No puedes desactivar al último administrador activo.',
+        );
       }
     }
 

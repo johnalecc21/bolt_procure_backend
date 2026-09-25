@@ -16,25 +16,35 @@ const PALETTE = [
 export class ProveedoresService {
   constructor(private prisma: PrismaService) {}
 
-  private whereDirectorio(params?: { categoria?: string; minScore?: number; query?: string }): Prisma.ProveedorProfileWhereInput {
+  private whereDirectorio(params?: {
+    categoria?: string;
+    minScore?: number;
+    query?: string;
+  }): Prisma.ProveedorProfileWhereInput {
     return {
-        // Only providers with an approved homologacion are visible/selectable here —
-        // a provider stuck in zona gris or without homologacion has no business
-        // being invited to bid, even though the invitation endpoint also enforces this.
-        homologacion: { estado: EstadoHomologacion.APROBADO },
-        ...(params?.categoria ? { categorias: { has: params.categoria } } : {}),
-        ...(params?.minScore ? { score: { gte: params.minScore } } : {}),
-        // Buyers search by what they need, not only by company name — so the
-        // proveedor's own description and catalog items are searchable too.
-        ...(params?.query
-          ? {
-              OR: [
-                { nombre: { contains: params.query, mode: 'insensitive' } },
-                { descripcion: { contains: params.query, mode: 'insensitive' } },
-                { itemsCatalogo: { some: { nombre: { contains: params.query, mode: 'insensitive' } } } },
-              ],
-            }
-          : {}),
+      // Only providers with an approved homologacion are visible/selectable here —
+      // a provider stuck in zona gris or without homologacion has no business
+      // being invited to bid, even though the invitation endpoint also enforces this.
+      homologacion: { estado: EstadoHomologacion.APROBADO },
+      ...(params?.categoria ? { categorias: { has: params.categoria } } : {}),
+      ...(params?.minScore ? { score: { gte: params.minScore } } : {}),
+      // Buyers search by what they need, not only by company name — so the
+      // proveedor's own description and catalog items are searchable too.
+      ...(params?.query
+        ? {
+            OR: [
+              { nombre: { contains: params.query, mode: 'insensitive' } },
+              { descripcion: { contains: params.query, mode: 'insensitive' } },
+              {
+                itemsCatalogo: {
+                  some: {
+                    nombre: { contains: params.query, mode: 'insensitive' },
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
     };
   }
 
@@ -49,7 +59,13 @@ export class ProveedoresService {
   }
 
   /** Server-side paginated directory for the client portal. */
-  async listPaginada(params: { page: number; limit: number; categoria?: string; minScore?: number; query?: string }) {
+  async listPaginada(params: {
+    page: number;
+    limit: number;
+    categoria?: string;
+    minScore?: number;
+    query?: string;
+  }) {
     const where = this.whereDirectorio(params);
     const [items, total] = await Promise.all([
       this.prisma.proveedorProfile.findMany({
@@ -69,22 +85,32 @@ export class ProveedoresService {
       where: { homologacion: { estado: EstadoHomologacion.APROBADO } },
       select: { categorias: true },
     });
-    return [...new Set(filas.flatMap((f) => f.categorias))].sort((a, b) => a.localeCompare(b, 'es'));
+    return [...new Set(filas.flatMap((f) => f.categorias))].sort((a, b) =>
+      a.localeCompare(b, 'es'),
+    );
   }
 
   async findOne(id: string) {
     const proveedor = await this.prisma.proveedorProfile.findUnique({
       where: { id },
-      include: { homologacion: true },
+      include: {
+        // Allowlist: any signed-in user (other companies, competing
+        // proveedores, Interno) can open this profile. The questionnaire
+        // (bank account, revenue, legal representative), the score breakdown,
+        // compliance notes and alerts stay in /homologacion and the Interno queue.
+        homologacion: {
+          select: {
+            id: true,
+            estado: true,
+            score: true,
+            nivelRiesgo: true,
+            fechaSolicitud: true,
+            proximaRevalidacion: true,
+          },
+        },
+      },
     });
     if (!proveedor) throw new NotFoundException('Proveedor no encontrado.');
-    // Directory viewers (other companies, Interno) only need to know a
-    // proveedor is homologado — alertas/nitDetectado are compliance-internal
-    // detail, not something a competitor or a client shortlisting them should see.
-    if (proveedor.homologacion) {
-      const { alertas: _alertas, nitDetectado: _nitDetectado, ...homologacionPublica } = proveedor.homologacion;
-      return { ...proveedor, homologacion: homologacionPublica };
-    }
     return proveedor;
   }
 
@@ -93,8 +119,12 @@ export class ProveedoresService {
   // every one of them just needs the id, not the full profile findByUserId
   // below loads, so this is a lighter query as well as a single definition.
   async findIdForUser(userId: string): Promise<string> {
-    const profile = await this.prisma.proveedorProfile.findUnique({ where: { userId }, select: { id: true } });
-    if (!profile) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
+    const profile = await this.prisma.proveedorProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!profile)
+      throw new NotFoundException('No tienes un perfil de proveedor asociado.');
     return profile.id;
   }
 
@@ -103,13 +133,17 @@ export class ProveedoresService {
       where: { userId },
       include: { homologacion: true },
     });
-    if (!proveedor) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
+    if (!proveedor)
+      throw new NotFoundException('No tienes un perfil de proveedor asociado.');
     return proveedor;
   }
 
   async actualizarMiPerfil(userId: string, dto: UpdatePerfilDto) {
-    const proveedor = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
-    if (!proveedor) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
+    const proveedor = await this.prisma.proveedorProfile.findUnique({
+      where: { userId },
+    });
+    if (!proveedor)
+      throw new NotFoundException('No tienes un perfil de proveedor asociado.');
     return this.prisma.proveedorProfile.update({
       where: { userId },
       data: {
@@ -117,15 +151,22 @@ export class ProveedoresService {
         ...(dto.categorias !== undefined ? { categorias: dto.categorias } : {}),
         ...(dto.ubicacion !== undefined ? { ubicacion: dto.ubicacion } : {}),
         ...(dto.nit !== undefined ? { nit: dto.nit.trim() || null } : {}),
-        ...(dto.sitioWeb !== undefined ? { sitioWeb: dto.sitioWeb.trim() || null } : {}),
-        ...(dto.certificaciones !== undefined ? { certificaciones: dto.certificaciones } : {}),
+        ...(dto.sitioWeb !== undefined
+          ? { sitioWeb: dto.sitioWeb.trim() || null }
+          : {}),
+        ...(dto.certificaciones !== undefined
+          ? { certificaciones: dto.certificaciones }
+          : {}),
       },
     });
   }
 
   async completarOnboarding(userId: string) {
-    const proveedor = await this.prisma.proveedorProfile.findUnique({ where: { userId } });
-    if (!proveedor) throw new NotFoundException('No tienes un perfil de proveedor asociado.');
+    const proveedor = await this.prisma.proveedorProfile.findUnique({
+      where: { userId },
+    });
+    if (!proveedor)
+      throw new NotFoundException('No tienes un perfil de proveedor asociado.');
     return this.prisma.proveedorProfile.update({
       where: { userId },
       data: { onboardingCompletado: true },
@@ -133,7 +174,12 @@ export class ProveedoresService {
   }
 
   async createExterno(nombre: string) {
-    const iniciales = nombre.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
+    const iniciales = nombre
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0]?.toUpperCase())
+      .join('');
     return this.prisma.$transaction(async (tx) => {
       const proveedor = await tx.proveedorProfile.create({
         data: {
