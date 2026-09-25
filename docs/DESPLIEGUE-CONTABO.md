@@ -139,6 +139,10 @@ Sin esto, las invitaciones y el restablecimiento de contraseña redirigen mal.
 ## 6. Verificación final
 
 - `https://api.tudominio.com/health` → `ok`.
+- **Base de datos cerrada al navegador**: Supabase → Advisors → Security no
+  debe mostrar "RLS disabled in public", y esta petición con la clave anónima
+  debe devolver error o lista vacía, nunca usuarios (ver `docs/SEGURIDAD.md`):
+  `curl "$SUPABASE_URL/rest/v1/users?select=email&limit=1" -H "apikey: $SUPABASE_ANON_KEY"`
 - Entra al frontend, inicia sesión y abre el Dashboard (si falla con error de
   red, revisa `CORS_ORIGIN` y `VITE_API_URL`).
 - Abre una Negociación en dos navegadores: las pujas deben verse en vivo
