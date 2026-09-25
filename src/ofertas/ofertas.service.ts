@@ -12,6 +12,7 @@ import {
   Moneda,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { formatRequerimientoCodigo } from '../common/utils/codigo.util';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { UpsertOfertaDto } from './dto/upsert-oferta.dto';
 import { calcularCompetencia } from '../analitica/competencia.util';
@@ -59,7 +60,12 @@ export class OfertasService {
         include: {
           company: true,
           requerimiento: {
-            select: { titulo: true, categoria: true, moneda: true },
+            select: {
+              numero: true,
+              titulo: true,
+              categoria: true,
+              moneda: true,
+            },
           },
         },
       }),
@@ -73,11 +79,14 @@ export class OfertasService {
       string,
       {
         requerimientoId: string;
+        codigo: string | null;
         titulo: string;
         cliente: string;
         categoria: string;
         moneda: Moneda;
         fechaLimite: Date;
+        /** When it landed on the supplier's board (for newest-first order). */
+        desde: Date;
         oferta: { enviada: boolean; precioTotal: number } | null;
       }
     >();
@@ -85,27 +94,35 @@ export class OfertasService {
       if (!inv.requerimientoId) continue;
       porRequerimiento.set(inv.requerimientoId, {
         requerimientoId: inv.requerimientoId,
+        codigo: inv.requerimiento
+          ? formatRequerimientoCodigo(inv.requerimiento.numero)
+          : null,
         titulo: inv.requerimiento?.titulo ?? '',
         cliente: inv.company.nombre,
         categoria: inv.requerimiento?.categoria ?? inv.categoria,
         moneda: inv.requerimiento?.moneda ?? Moneda.USD,
         fechaLimite: inv.fechaLimite,
+        desde: inv.createdAt,
         oferta: null,
       });
     }
     for (const o of ofertas) {
+      const previa = porRequerimiento.get(o.requerimientoId);
       porRequerimiento.set(o.requerimientoId, {
         requerimientoId: o.requerimientoId,
+        codigo: formatRequerimientoCodigo(o.requerimiento.numero),
         titulo: o.requerimiento.titulo,
         cliente: o.requerimiento.company.nombre,
         categoria: o.requerimiento.categoria,
         moneda: o.requerimiento.moneda,
         fechaLimite: o.requerimiento.fechaLimite,
+        desde: previa?.desde ?? o.createdAt,
         oferta: { enviada: o.enviada, precioTotal: o.precioTotal },
       });
     }
+    // Newest process first.
     return Array.from(porRequerimiento.values()).sort(
-      (a, b) => a.fechaLimite.getTime() - b.fechaLimite.getTime(),
+      (a, b) => b.desde.getTime() - a.desde.getTime(),
     );
   }
 
@@ -113,7 +130,9 @@ export class OfertasService {
     const proveedorId = await this.proveedores.findIdForUser(userId);
     const [oferta, invitado] = await Promise.all([
       this.prisma.oferta.findUnique({
-        where: { requerimientoId_proveedorId: { requerimientoId, proveedorId } },
+        where: {
+          requerimientoId_proveedorId: { requerimientoId, proveedorId },
+        },
         include: { items: { select: { itemId: true, precioUnitario: true } } },
       }),
       this.prisma.invitacion.findFirst({
