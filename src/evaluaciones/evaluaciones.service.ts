@@ -98,7 +98,7 @@ export class EvaluacionesService {
         requierePlanMejora
           ? `Tu desempeño en ${codigo} obtuvo ${puntaje}/100, por debajo de ${UMBRAL_PLAN_MEJORA}. Coordina un plan de mejora con tu cliente.`
           : `Tu desempeño en ${codigo} obtuvo ${puntaje}/100.`,
-        '/proveedor/historial',
+        '/proveedor/procesos?vista=terminados',
       );
     }
     return evaluacion;

@@ -56,7 +56,7 @@ export class PreguntasService {
         'PROVEEDOR',
         'Nueva pregunta de un proveedor',
         `Un proveedor preguntó sobre "${req.titulo}".`,
-        `/cliente/licitaciones/${requerimientoId}`,
+        `/cliente/procesos/${requerimientoId}`,
       );
     }
     return pregunta;

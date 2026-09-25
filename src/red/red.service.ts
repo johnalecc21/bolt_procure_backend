@@ -102,7 +102,7 @@ export class RedService {
           'PROVEEDOR',
           'Nueva oportunidad en tu categoría',
           `${r.company.nombre} abrió "${r.titulo}" a la red de proveedores homologados. Puedes participar hasta el ${r.fechaLimite.toISOString().slice(0, 10)}.`,
-          '/proveedor/oportunidades',
+          '/proveedor/procesos',
         );
       return destinatarios.length;
     } catch (err) {
@@ -462,7 +462,7 @@ export class RedService {
       'OFERTA',
       'Un proveedor se unió desde la red',
       `${p.nombre} se unió a "${r.titulo}" como proveedor homologado de la red.`,
-      `/cliente/licitaciones/${r.id}`,
+      `/cliente/procesos/${r.id}`,
     );
     return { ok: true, requerimientoId: r.id };
   }

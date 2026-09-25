@@ -119,7 +119,14 @@ export class NavegacionService {
           })
         : 0,
     ]);
-    return { invitaciones, pagos: porFacturar, oportunidades };
+    // "procesos" is what the single Procesos menu entry shows: new invitations
+    // plus network processes of the supplier's categories not joined yet.
+    return {
+      invitaciones,
+      pagos: porFacturar,
+      oportunidades,
+      procesos: invitaciones + oportunidades,
+    };
   }
 
   private async interno(role: Role): Promise<Record<string, number>> {

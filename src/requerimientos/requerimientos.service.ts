@@ -749,7 +749,7 @@ export class RequerimientosService {
             'PROVEEDOR',
             'Nueva invitación a licitar',
             `Fuiste invitado a participar en "${req.titulo}".`,
-            '/proveedor/invitaciones',
+            '/proveedor/procesos',
           ),
         ),
     );

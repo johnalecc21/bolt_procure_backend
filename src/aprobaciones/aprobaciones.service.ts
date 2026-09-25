@@ -59,7 +59,7 @@ export class AprobacionesService {
             'PROVEEDOR',
             'Nueva invitación a licitar',
             `Fuiste invitado a participar en "${tituloRequerimiento}".`,
-            '/proveedor/invitaciones',
+            '/proveedor/procesos',
           ),
         ),
     );

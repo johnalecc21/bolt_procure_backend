@@ -66,6 +66,7 @@ export class OfertasService {
               titulo: true,
               categoria: true,
               moneda: true,
+              estado: true,
             },
           },
         },
@@ -86,6 +87,8 @@ export class OfertasService {
         categoria: string;
         moneda: Moneda;
         fechaLimite: Date;
+        /** Stage of the purchase process (live auction, awarded…). */
+        estadoProceso: EstadoRequerimiento | null;
         /** When it landed on the supplier's board (for newest-first order). */
         desde: Date;
         oferta: { enviada: boolean; precioTotal: number } | null;
@@ -103,6 +106,7 @@ export class OfertasService {
         categoria: inv.requerimiento?.categoria ?? inv.categoria,
         moneda: inv.requerimiento?.moneda ?? Moneda.USD,
         fechaLimite: inv.fechaLimite,
+        estadoProceso: inv.requerimiento?.estado ?? null,
         desde: inv.createdAt,
         oferta: null,
       });
@@ -117,6 +121,7 @@ export class OfertasService {
         categoria: o.requerimiento.categoria,
         moneda: o.requerimiento.moneda,
         fechaLimite: o.requerimiento.fechaLimite,
+        estadoProceso: o.requerimiento.estado,
         desde: previa?.desde ?? o.createdAt,
         oferta: { enviada: o.enviada, precioTotal: o.precioTotal },
       });
@@ -205,6 +210,23 @@ export class OfertasService {
       throw new ForbiddenException(
         'No tienes una invitación activa para este proceso.',
       );
+    }
+    // Working on an offer is the answer to the invitation: there is no
+    // separate "accept" step. A supplier who had declined can change its mind
+    // while the tender is open.
+    if (
+      invitado.estado === EstadoInvitacion.NUEVA ||
+      invitado.estado === EstadoInvitacion.DECLINADA
+    ) {
+      const ahora = new Date();
+      await this.prisma.invitacion.update({
+        where: { id: invitado.id },
+        data: {
+          estado: EstadoInvitacion.VISTA,
+          respondidaAt: ahora,
+          vistaAt: invitado.vistaAt ?? ahora,
+        },
+      });
     }
     const existing = await this.prisma.oferta.findUnique({
       where: {

@@ -312,7 +312,7 @@ export class AdjudicacionService {
             'CONTRATO',
             '¡Fuiste seleccionado como ganador!',
             `Tu oferta para "${requerimiento.titulo}" fue seleccionada${parcial ? ' en parte de sus ítems' : ''}, sujeta a la firma del contrato. Revisa la carta de adjudicación en tu historial.`,
-            '/proveedor/historial',
+            '/proveedor/procesos?vista=terminados',
           ),
         ),
     );
@@ -525,7 +525,7 @@ export class AdjudicacionService {
               'OFERTA',
               'Proceso adjudicado a otro proveedor',
               `${requerimiento.titulo} fue adjudicado a otro participante. Revisa el feedback en tu historial.`,
-              '/proveedor/historial',
+              '/proveedor/procesos?vista=terminados',
             ),
           ),
       );
