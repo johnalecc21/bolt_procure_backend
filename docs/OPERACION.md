@@ -75,6 +75,8 @@ de operación: fecha, archivo usado, duración, responsable.
 
 ## 3. Alertas
 
+Para rastrear un error concreto (la referencia que ve el usuario, el ID de petición, qué hay en cada log) ver [`OBSERVABILIDAD.md`](OBSERVABILIDAD.md).
+
 - **Errores de aplicación:** GlitchTip (`GLITCHTIP_DSN`). En GlitchTip →
   Project → Alerts, crear una alerta por correo cuando aparezca un error
   nuevo y otra cuando un error supere 20 eventos por hora.

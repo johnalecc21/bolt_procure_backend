@@ -13,6 +13,7 @@ import {
   formatRequerimientoCodigo,
 } from '../common/utils/codigo.util';
 import { TIPOS_SIIGO, configSiigo } from './siigo/siigo.reglas';
+import { reportarFallo } from '../common/logging/reportar';
 
 const fecha = (d: Date | null | undefined) =>
   d ? d.toISOString().slice(0, 10) : null;
@@ -334,10 +335,10 @@ export class ErpEventosService {
         },
       });
     } catch (err) {
-      this.logger.error(
-        `No se pudo encolar ${tipo} ${entidadId} para el ERP`,
-        err instanceof Error ? err.stack : err,
-      );
+      reportarFallo(this.logger, 'Encolar evento ERP', err, {
+        tipo,
+        entidadId,
+      });
     }
   }
 

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ContenidoCorreo, renderCorreo } from './plantilla';
 import { urlFrontend } from '../config/origenes';
+import { reportarFallo } from '../common/logging/reportar';
 
 const RESEND_URL = 'https://api.resend.com/emails';
 const REINTENTOS = 3;
@@ -81,9 +82,10 @@ export class EmailService {
         throw new Error(`HTTP ${res.status}`);
       } catch (err) {
         if (intento === REINTENTOS) {
-          this.logger.error(
-            `No se pudo enviar el correo a ${to} tras ${REINTENTOS} intentos: ${(err as Error).message}`,
-          );
+          reportarFallo(this.logger, 'Envío de correo', err, {
+            destinatario: to,
+            intentos: REINTENTOS,
+          });
           return false;
         }
         await new Promise((r) => setTimeout(r, 500 * 2 ** intento));

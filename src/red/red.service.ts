@@ -20,6 +20,7 @@ import {
   categoriasFaltantes,
   esElegible,
 } from '../homologacion/requisitos.util';
+import { reportarFallo } from '../common/logging/reportar';
 
 const POR_PAGINA = 24;
 const MAX_AVISOS = 500;
@@ -106,10 +107,9 @@ export class RedService {
         );
       return destinatarios.length;
     } catch (err) {
-      this.logger.error(
-        `No se pudo publicar ${requerimientoId} en la red`,
-        err instanceof Error ? err.stack : err,
-      );
+      reportarFallo(this.logger, 'Publicación en la red', err, {
+        requerimientoId,
+      });
       return 0;
     }
   }

@@ -4,13 +4,15 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import type { Params } from 'nestjs-pino';
 import type { TransportTargetOptions } from 'pino';
 import type { IncomingMessage, ServerResponse } from 'http';
 import Redis from 'ioredis';
 import { AppController } from './app.controller';
+import { generarRequestId } from './common/logging/request-id';
+import { ContextoSentryInterceptor } from './common/logging/contexto-sentry.interceptor';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { SupabaseModule } from './supabase/supabase.module';
@@ -116,7 +118,24 @@ import { EmailModule } from './email/email.module';
             name: 'bolt-procure-backend',
             level: isProd ? 'info' : 'debug',
             transport: targets.length ? { targets } : undefined,
-            autoLogging: true,
+            // Health probes every few seconds would drown the real traffic.
+            autoLogging: {
+              ignore: (req: IncomingMessage) => req.url === '/health',
+            },
+            genReqId: generarRequestId,
+            // 5xx are failures, 4xx are the client's (validation, permission,
+            // conflict): both carry the reason on the same line (see the
+            // exception filter), successful requests stay at info.
+            customLogLevel: (
+              _req: IncomingMessage,
+              res: ServerResponse,
+              err?: Error,
+            ) =>
+              res.statusCode >= 500 || err
+                ? 'error'
+                : res.statusCode >= 400
+                  ? 'warn'
+                  : 'info',
             redact: {
               paths: [
                 'req.headers.authorization',
@@ -128,15 +147,26 @@ import { EmailModule } from './email/email.module';
             // Auto-logged request/response lines don't get a `context` from
             // Nest's Logger, so we set one here — keeps every console line
             // (app logs and HTTP logs alike) showing "[service] [context]".
+            // Evaluated again when the response finishes, after the auth
+            // guard set req.user, so every request line says who and which
+            // company (AuthenticatedUser: sub, email, portal, role, companyId).
             customProps: (
               req: IncomingMessage & {
-                user?: { id?: string; email?: string; portal?: string };
+                user?: {
+                  sub?: string;
+                  email?: string;
+                  portal?: string;
+                  role?: string;
+                  companyId?: string;
+                };
               },
             ) => ({
               context: 'HTTP',
-              userId: req.user?.id,
+              userId: req.user?.sub,
               userEmail: req.user?.email,
               portal: req.user?.portal,
+              role: req.user?.role,
+              companyId: req.user?.companyId,
             }),
             customSuccessMessage: (req: IncomingMessage, res: ServerResponse) =>
               `${req.method} ${req.url} ${res.statusCode}`,
@@ -203,6 +233,7 @@ import { EmailModule } from './email/email.module';
     { provide: APP_GUARD, useClass: PortalGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
+    { provide: APP_INTERCEPTOR, useClass: ContextoSentryInterceptor },
   ],
 })
 export class AppModule {}

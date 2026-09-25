@@ -9,5 +9,8 @@ import * as Sentry from '@sentry/nestjs';
 Sentry.init({
   dsn: process.env.GLITCHTIP_DSN,
   environment: process.env.NODE_ENV ?? 'development',
+  // Deployed commit, so an error points to the exact code that raised it
+  // (set GIT_SHA in the deploy; Render exposes RENDER_GIT_COMMIT).
+  release: process.env.GIT_SHA ?? process.env.RENDER_GIT_COMMIT ?? undefined,
   tracesSampleRate: 0.2,
 });

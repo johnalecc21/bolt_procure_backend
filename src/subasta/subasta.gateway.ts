@@ -17,6 +17,7 @@ import {
   AuctionViewer,
   IniciarOpciones,
 } from './subasta.service';
+import { reportarFallo } from '../common/logging/reportar';
 
 interface SocketUser extends AuctionViewer {
   sub: string;
@@ -218,9 +219,9 @@ export class SubastaGateway implements OnGatewayInit {
             await this.subasta.getState(requerimientoId),
           );
         })().catch((err: Error) =>
-          this.logger.error(
-            `No se pudo cerrar la subasta ${requerimientoId}: ${err.message}`,
-          ),
+          reportarFallo(this.logger, 'Cierre de subasta', err, {
+            requerimientoId,
+          }),
         );
       },
       Math.max(0, delayMs) + 250,

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { bestMatch, NameMatch, normalizeName } from './name-matching';
+import { reportarFallo } from '../common/logging/reportar';
 
 const SDN_CSV_URL = 'https://www.treasury.gov/ofac/downloads/sdn.csv';
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h — the SDN list only changes a few times a week.
@@ -55,7 +56,8 @@ export class OfacService {
       this.logger.log(`Lista OFAC/SDN cargada: ${names.length} entidades.`);
       return names;
     } catch (err) {
-      this.logger.warn(`No se pudo descargar la lista OFAC/SDN: ${(err as Error).message}`);
+      // Screening falls back to the last copy; the team must know it's stale.
+      reportarFallo(this.logger, 'Descarga lista OFAC/SDN', err);
       return this.cachedNames;
     }
   }

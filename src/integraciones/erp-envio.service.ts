@@ -17,6 +17,7 @@ import {
   firmar,
   validarUrlWebhook,
 } from './erp.seguridad';
+import { reportarFallo } from '../common/logging/reportar';
 
 const LOCK_KEY = 'erp:envio:lock';
 const LOCK_TTL_MS = 2 * 60 * 1000;
@@ -80,10 +81,7 @@ export class ErpEnvioService {
     try {
       await this.procesar();
     } catch (err) {
-      this.logger.error(
-        'Falló el envío de eventos al ERP',
-        err instanceof Error ? err.stack : err,
-      );
+      reportarFallo(this.logger, 'Envío de eventos al ERP', err);
     } finally {
       await this.redis.del(LOCK_KEY).catch(() => undefined);
     }

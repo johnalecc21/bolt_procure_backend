@@ -29,6 +29,7 @@ import {
   marcador,
   separarNit,
 } from './siigo.reglas';
+import { reportarFallo } from '../../common/logging/reportar';
 
 export interface ResultadoSiigo {
   ok: boolean;
@@ -486,10 +487,12 @@ export class SiigoService {
       for (const i of integraciones)
         if (configSiigo(i.conectorConfig).pagosDesde === 'SIIGO')
           await this.sincronizarPagos(i).catch((err) =>
-            this.logger.warn(
-              `Sincronización de pagos Siigo ${i.companyId}: ${mensaje(err)}`,
-            ),
+            reportarFallo(this.logger, 'Pagos desde Siigo', err, {
+              companyId: i.companyId,
+            }),
           );
+    } catch (err) {
+      reportarFallo(this.logger, 'Pagos desde Siigo', err);
     } finally {
       await this.redis.del(LOCK_PAGOS).catch(() => undefined);
     }

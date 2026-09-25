@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { paginate } from '../common/dto/pagination.dto';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { CSV_ENCABEZADO, csvFila, fechaCorte, RETENCION_DEFAULT_MESES } from './audit-csv.util';
+import { reportarFallo } from '../common/logging/reportar';
 
 export interface LogAuditInput {
   // Omit only for actions with no company involved at all (e.g. Interno
@@ -118,7 +119,7 @@ export class AuditLogService {
       borrados += sinEmpresa.count;
       if (borrados > 0) this.logger.log(`Retención de auditoría: ${borrados} registros eliminados.`);
     } catch (err) {
-      this.logger.error(`Falló la retención de auditoría: ${(err as Error).message}`);
+      reportarFallo(this.logger, 'Retención de auditoría', err);
     } finally {
       await this.redis.del(LOCK_KEY).catch(() => undefined);
     }

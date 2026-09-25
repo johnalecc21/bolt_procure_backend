@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { bestMatch, NameMatch, normalizeName } from './name-matching';
+import { reportarFallo } from '../common/logging/reportar';
 
 const ONU_XML_URL =
   'https://scsanctions.un.org/resources/xml/en/consolidated.xml';
@@ -56,9 +57,8 @@ export class OnuService {
       );
       return names;
     } catch (err) {
-      this.logger.warn(
-        `No se pudo descargar la lista consolidada ONU: ${(err as Error).message}`,
-      );
+      // Screening falls back to the last copy; the team must know it's stale.
+      reportarFallo(this.logger, 'Descarga lista ONU', err);
       return this.cachedNames;
     }
   }

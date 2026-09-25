@@ -32,7 +32,12 @@ async function bootstrap() {
   // frameguard, etc.) still apply.
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(compression());
-  app.enableCors({ origin: origenesPermitidos(config.get<string>('CORS_ORIGIN')), credentials: true });
+  app.enableCors({
+    origin: origenesPermitidos(config.get<string>('CORS_ORIGIN')),
+    credentials: true,
+    // The frontend reads it to show "ref. …" on errors and to tag its reports.
+    exposedHeaders: ['X-Request-Id'],
+  });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: false }),
   );

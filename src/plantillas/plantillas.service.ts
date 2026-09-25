@@ -30,6 +30,7 @@ import type {
   MarcaDto,
   SubidaDto,
 } from './dto/plantillas.dto';
+import { reportarFallo } from '../common/logging/reportar';
 
 const BUCKET = 'plantillas-documentos';
 const BUCKET_CONTRATOS = 'contratos-documentos';
@@ -604,7 +605,10 @@ export class PlantillasService implements OnModuleInit {
       return await this.generar(companyId, contratoId, motivo);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Plantilla para ${contratoId}: ${msg}`);
+      reportarFallo(this.logger, 'Documento desde plantilla', err, {
+        companyId,
+        contratoId,
+      });
       await this.auditLog
         .log({
           companyId,

@@ -15,6 +15,7 @@ import { REDIS_CLIENT } from '../redis/redis.constants';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { ListasRestrictivasService } from './listas-restrictivas.service';
+import { reportarFallo } from '../common/logging/reportar';
 
 const LOCK = 'riesgo:monitoreo:lock';
 const MS_DIA = 86_400_000;
@@ -57,10 +58,7 @@ export class RiesgoService {
       const r = await this.ejecutar();
       this.logger.log(`Monitoreo de riesgo: ${JSON.stringify(r)}`);
     } catch (err) {
-      this.logger.error(
-        'Falló el monitoreo de riesgo',
-        err instanceof Error ? err.stack : err,
-      );
+      reportarFallo(this.logger, 'Monitoreo de riesgo', err);
     } finally {
       await this.redis.del(LOCK).catch(() => undefined);
     }
