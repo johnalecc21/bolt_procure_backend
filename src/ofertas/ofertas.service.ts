@@ -295,7 +295,7 @@ export class OfertasService {
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.oferta.updateMany({
         where: { id: oferta.id, enviada: false },
-        data: { enviada: true },
+        data: { enviada: true, enviadaAt: new Date() },
       });
       if (count === 0)
         throw new ConflictException('Esta oferta ya fue enviada.');

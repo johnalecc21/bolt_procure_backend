@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoInvitacion } from '@prisma/client';
+import { EstadoInvitacion, EstadoRequerimiento } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { StorageService } from '../storage/storage.service';
@@ -46,15 +46,41 @@ export class InvitacionesService {
     }));
   }
 
+  /**
+   * The supplier's invitation to the process, or — for a process open to the
+   * network — a read-only pass so it can look before joining.
+   */
   private async invitacionDe(userId: string, requerimientoId: string) {
     const proveedorId = await this.proveedores.findIdForUser(userId);
     const invitacion = await this.prisma.invitacion.findFirst({
       where: { requerimientoId, proveedorId, enviada: true },
-      select: { id: true, estado: true, fechaLimite: true },
+      select: { id: true, estado: true, fechaLimite: true, vistaAt: true },
     });
-    if (!invitacion)
+    if (invitacion) {
+      // First look: feeds the buyer's live tender board.
+      if (!invitacion.vistaAt)
+        await this.prisma.invitacion.update({
+          where: { id: invitacion.id },
+          data: { vistaAt: new Date() },
+        });
+      return invitacion;
+    }
+    const abierto = await this.prisma.requerimiento.findFirst({
+      where: {
+        id: requerimientoId,
+        abiertoRed: true,
+        estado: EstadoRequerimiento.EN_LICITACION,
+      },
+      select: { fechaLimite: true },
+    });
+    if (!abierto)
       throw new NotFoundException('No tienes una invitación a este proceso.');
-    return invitacion;
+    return {
+      id: null,
+      estado: null,
+      fechaLimite: abierto.fechaLimite,
+      vistaAt: null,
+    };
   }
 
   /**
@@ -114,7 +140,11 @@ export class InvitacionesService {
       criterios: r.criteriosPeso ?? null,
       items: r.items,
       documentos: r.documentos,
-      invitacion: { id: invitacion.id, estado: invitacion.estado },
+      invitacion: invitacion.id
+        ? { id: invitacion.id, estado: invitacion.estado }
+        : null,
+      /** Open to the network and the supplier hasn't joined yet. */
+      abiertoRed: !invitacion.id,
     };
   }
 
@@ -145,7 +175,11 @@ export class InvitacionesService {
       throw new BadRequestException('Esta invitación ya no se puede cambiar.');
     return this.prisma.invitacion.update({
       where: { id },
-      data: { estado: estado },
+      data: {
+        estado: estado,
+        respondidaAt: new Date(),
+        vistaAt: invitacion.vistaAt ?? new Date(),
+      },
     });
   }
 

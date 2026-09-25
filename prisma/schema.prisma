@@ -351,6 +351,9 @@ model Requerimiento {
   solicitanteId        String
   criteriosPeso        Json?
   especificaciones     Json?
+  /// Published to every homologated supplier of the category, not only the
+  /// ones invited: any eligible one can join (the network effect).
+  abiertoRed           Boolean                @default(false)
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
 
@@ -494,6 +497,7 @@ model ProveedorProfile {
 
   user            User?                 @relation(fields: [userId], references: [id])
   homologacion    Homologacion?
+  alertasRiesgo   AlertaRiesgo[]
   ofertas         Oferta[]
   invitaciones    Invitacion[]
   pagos           PagoPO[]
@@ -528,6 +532,8 @@ model Homologacion {
   /// Último motivo de "solicitar información" del panel de Compliance, visible al proveedor
   /// mientras la homologación está de vuelta en BORRADOR para que la corrija.
   observaciones       String?
+  /// Last automatic re-screening against OFAC/ONU (continuous monitoring).
+  ultimoMonitoreo     DateTime?
 
   proveedor      ProveedorProfile        @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
   documentos     DocumentoHomologacion[]
@@ -538,17 +544,19 @@ model Homologacion {
 }
 
 model DocumentoHomologacion {
-  id             String             @id @default(cuid())
-  homologacionId String
-  nombre         String
-  categoria      CategoriaDocumento @default(LEGAL)
+  id               String             @id @default(cuid())
+  homologacionId   String
+  nombre           String
+  categoria        CategoriaDocumento @default(LEGAL)
   // Required ones block "enviar" until uploaded; optional ones only matter
   // when a client company lists their category as required for invitation.
-  obligatorio    Boolean            @default(true)
-  estado         EstadoDocumento    @default(PENDIENTE)
-  vigencia       DateTime?
+  obligatorio      Boolean            @default(true)
+  estado           EstadoDocumento    @default(PENDIENTE)
+  vigencia         DateTime?
+  /// Last expiry warning sent (days before: 30, 15, 7, 0) — one per threshold.
+  avisoVencimiento Int?
   /// Path within the `homologacion-documentos` Supabase Storage bucket, set once a file is actually uploaded.
-  storagePath    String?
+  storagePath      String?
 
   homologacion Homologacion @relation(fields: [homologacionId], references: [id], onDelete: Cascade)
 
@@ -557,7 +565,7 @@ model DocumentoHomologacion {
 }
 
 model Oferta {
-  id                  String   @id @default(cuid())
+  id                  String    @id @default(cuid())
   requerimientoId     String
   proveedorId         String
   precioUnitario      Int
@@ -566,9 +574,11 @@ model Oferta {
   condicionesPagoDias Int
   garantiaMeses       Int
   vigenciaOfertaDias  Int
-  calidad             Int      @default(80)
-  enviada             Boolean  @default(false)
-  createdAt           DateTime @default(now())
+  calidad             Int       @default(80)
+  enviada             Boolean   @default(false)
+  enviadaAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @default(now()) @updatedAt
 
   requerimiento Requerimiento    @relation(fields: [requerimientoId], references: [id], onDelete: Cascade)
   proveedor     ProveedorProfile @relation(fields: [proveedorId], references: [id])
@@ -848,6 +858,12 @@ model Invitacion {
   // Flips to true (and the provider gets notified) once the requerimiento
   // is approved, or immediately for invitations added after approval.
   enviada         Boolean          @default(false)
+  /// INVITACION (chosen by the buyer) or RED (the supplier joined an open process).
+  origen          String           @default("INVITACION")
+  /// First time the supplier opened the process (live tender board).
+  vistaAt         DateTime?
+  /// When it accepted or declined.
+  respondidaAt    DateTime?
   createdAt       DateTime         @default(now())
 
   requerimiento Requerimiento?   @relation(fields: [requerimientoId], references: [id])
@@ -1411,4 +1427,42 @@ model MarcaDocumentos {
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@map("marca_documentos")
+}
+
+// ---------------------------------------------------------------------------
+// Riesgo continuo de proveedores
+// ---------------------------------------------------------------------------
+
+enum TipoAlertaRiesgo {
+  /// A restrictive list now returns a possible match.
+  LISTA_RESTRICTIVA
+  DOCUMENTO_VENCIDO
+  /// The periodic re-evaluation of the homologación is due.
+  REVALIDACION
+}
+
+enum EstadoAlertaRiesgo {
+  ABIERTA
+  RESUELTA
+}
+
+/// Something that changed on an already-homologated supplier.
+model AlertaRiesgo {
+  id          String             @id @default(cuid())
+  proveedorId String
+  tipo        TipoAlertaRiesgo
+  detalle     String
+  estado      EstadoAlertaRiesgo @default(ABIERTA)
+  /// Document concerned, for DOCUMENTO_VENCIDO.
+  documentoId String?
+  resolucion  String?
+  resueltaPor String?
+  resueltaAt  DateTime?
+  createdAt   DateTime           @default(now())
+
+  proveedor ProveedorProfile @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+
+  @@index([estado, createdAt])
+  @@index([proveedorId, estado])
+  @@map("alertas_riesgo")
 }

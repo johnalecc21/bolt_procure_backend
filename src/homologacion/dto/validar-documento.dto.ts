@@ -1,4 +1,10 @@
-import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsISO8601,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class ValidarDocumentoDto {
   @IsBoolean()
@@ -8,4 +14,9 @@ export class ValidarDocumentoDto {
   @IsString()
   @MaxLength(500)
   motivo?: string;
+
+  /** Compliance can set or correct the expiry when validating. */
+  @IsOptional()
+  @IsISO8601()
+  vigencia?: string;
 }

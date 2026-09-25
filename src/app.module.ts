@@ -36,6 +36,7 @@ import { ErpEventosModule } from './integraciones/erp-eventos.module';
 import { IntegracionesModule } from './integraciones/integraciones.module';
 import { PlantillasModule } from './plantillas/plantillas.module';
 import { NavegacionModule } from './navegacion/navegacion.module';
+import { RedModule } from './red/red.module';
 import { ContratosModule } from './contratos/contratos.module';
 import { SeguimientoModule } from './seguimiento/seguimiento.module';
 import { DisputasModule } from './disputas/disputas.module';
@@ -177,6 +178,7 @@ import { EmailModule } from './email/email.module';
     IntegracionesModule,
     PlantillasModule,
     NavegacionModule,
+    RedModule,
     ContratosModule,
     SeguimientoModule,
     DisputasModule,

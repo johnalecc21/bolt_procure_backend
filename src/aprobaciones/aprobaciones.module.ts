@@ -1,3 +1,4 @@
+import { RedModule } from '../red/red.module';
 import { Module } from '@nestjs/common';
 import { AprobacionesService } from './aprobaciones.service';
 import { AprobacionesController } from './aprobaciones.controller';
@@ -6,7 +7,7 @@ import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { RequerimientosModule } from '../requerimientos/requerimientos.module';
 
 @Module({
-  imports: [AuditLogModule, NotificacionesModule, RequerimientosModule],
+  imports: [AuditLogModule, NotificacionesModule, RequerimientosModule, RedModule],
   controllers: [AprobacionesController],
   providers: [AprobacionesService],
 })

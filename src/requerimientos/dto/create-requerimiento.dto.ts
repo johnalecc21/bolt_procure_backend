@@ -3,6 +3,7 @@ import { Moneda, PrioridadRequerimiento } from '@prisma/client';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsNumber,
   MaxLength,
   IsEnum,
@@ -93,6 +94,11 @@ export class CreateRequerimientoDto {
   @IsString({ each: true })
   @IsOptional()
   proveedorIds?: string[];
+
+  /** Also publish it to every homologated supplier of the category. */
+  @IsOptional()
+  @IsBoolean()
+  abiertoRed?: boolean;
 
   /** Optional bill of quantities; without it the offer is a single lump sum. */
   @IsArray()

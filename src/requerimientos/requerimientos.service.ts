@@ -314,6 +314,7 @@ export class RequerimientosService {
           moneda,
           centroCostoId,
           fechaLimite,
+          abiertoRed: dto.abiertoRed ?? false,
           criteriosPeso: dto.criteriosPeso,
           especificaciones:
             dto.especificaciones as unknown as Prisma.InputJsonValue,

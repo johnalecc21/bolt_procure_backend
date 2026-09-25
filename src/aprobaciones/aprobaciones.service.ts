@@ -1,3 +1,4 @@
+import { RedService } from '../red/red.service';
 import {
   ForbiddenException,
   Injectable,
@@ -22,6 +23,7 @@ export class AprobacionesService {
     private auditLog: AuditLogService,
     private notificaciones: NotificacionesService,
     private requerimientos: RequerimientosService,
+    private red: RedService,
   ) {}
 
   // Sends the shortlist staged at creation time (Invitacion rows with
@@ -164,6 +166,8 @@ export class AprobacionesService {
           aprobacion.requerimientoId,
           aprobacion.requerimiento.titulo,
         );
+        // Open tenders also reach every homologated supplier of the category.
+        await this.red.publicar(aprobacion.requerimientoId);
       }
     } else {
       await this.prisma.$transaction([

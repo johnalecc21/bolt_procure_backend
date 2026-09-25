@@ -17,6 +17,7 @@ function doc(partial: Partial<DocumentoHomologacion>): DocumentoHomologacion {
     obligatorio: true,
     estado: 'SUBIDO',
     vigencia: null,
+    avisoVencimiento: null,
     storagePath: null,
     ...partial,
   };

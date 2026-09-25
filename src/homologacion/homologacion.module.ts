@@ -9,10 +9,12 @@ import { OcrService } from './ocr.service';
 import { OfacService } from './ofac.service';
 import { OnuService } from './onu.service';
 import { ListasRestrictivasService } from './listas-restrictivas.service';
+import { RiesgoService } from './riesgo.service';
+import { RiesgoController } from './riesgo.controller';
 
 @Module({
   imports: [AuditLogModule, ProveedoresModule, NotificacionesModule],
-  controllers: [HomologacionController],
-  providers: [HomologacionService, HomologacionScoringService, OcrService, OfacService, OnuService, ListasRestrictivasService],
+  controllers: [HomologacionController, RiesgoController],
+  providers: [HomologacionService, HomologacionScoringService, OcrService, OfacService, OnuService, ListasRestrictivasService, RiesgoService],
 })
 export class HomologacionModule {}

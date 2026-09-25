@@ -49,7 +49,7 @@ export class HomologacionController {
     @Param('id') id: string,
     @Body() dto: ConfirmUploadDto,
   ) {
-    return this.service.subirDocumento(user.sub, id, dto.path);
+    return this.service.subirDocumento(user.sub, id, dto.path, dto.vigencia);
   }
 
   @Get('documentos/:id/download-url')
@@ -96,7 +96,7 @@ export class HomologacionController {
   @Roles(Role.COMPLIANCE_OPS)
   @Post('documentos/:id/validar')
   validarDocumento(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: ValidarDocumentoDto) {
-    return this.service.validarDocumento(id, dto.valido, user.email, dto.motivo);
+    return this.service.validarDocumento(id, dto.valido, user.email, dto.motivo, dto.vigencia);
   }
 
   @PortalOnly('INTERNO')

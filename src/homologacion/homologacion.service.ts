@@ -78,7 +78,7 @@ export class HomologacionService {
     return this.storage.createUploadUrl(BUCKET, path);
   }
 
-  async subirDocumento(userId: string, documentoId: string, path: string) {
+  async subirDocumento(userId: string, documentoId: string, path: string, vigencia?: string) {
     const proveedorId = await this.proveedores.findIdForUser(userId);
     const doc = await this.prisma.documentoHomologacion.findFirst({
       where: { id: documentoId, homologacion: { proveedorId } },
@@ -105,7 +105,13 @@ export class HomologacionService {
 
     return this.prisma.documentoHomologacion.update({
       where: { id: documentoId },
-      data: { estado: EstadoDocumento.SUBIDO, storagePath: path },
+      data: {
+        estado: EstadoDocumento.SUBIDO,
+        storagePath: path,
+        // A renewed document starts a new expiry cycle.
+        vigencia: vigencia ? new Date(vigencia) : null,
+        avisoVencimiento: null,
+      },
     });
   }
 
@@ -226,7 +232,7 @@ export class HomologacionService {
   }
 
   /** Compliance validates (or rejects) a single document uploaded after the homologación was approved. */
-  async validarDocumento(documentoId: string, valido: boolean, actorNombre: string, motivo?: string) {
+  async validarDocumento(documentoId: string, valido: boolean, actorNombre: string, motivo?: string, vigencia?: string) {
     const doc = await this.prisma.documentoHomologacion.findUnique({
       where: { id: documentoId },
       include: { homologacion: { include: { proveedor: true } } },
@@ -240,8 +246,16 @@ export class HomologacionService {
     }
     const actualizado = await this.prisma.documentoHomologacion.update({
       where: { id: documentoId },
-      data: valido ? { estado: EstadoDocumento.VALIDADO } : { estado: EstadoDocumento.PENDIENTE, storagePath: null },
+      data: valido
+        ? { estado: EstadoDocumento.VALIDADO, ...(vigencia ? { vigencia: new Date(vigencia), avisoVencimiento: null } : {}) }
+        : { estado: EstadoDocumento.PENDIENTE, storagePath: null },
     });
+    if (valido)
+      // A renewed document closes its expiry alert.
+      await this.prisma.alertaRiesgo.updateMany({
+        where: { documentoId, estado: 'ABIERTA' },
+        data: { estado: 'RESUELTA', resolucion: 'Documento renovado y validado.', resueltaPor: actorNombre, resueltaAt: new Date() },
+      });
     const proveedor = doc.homologacion.proveedor;
     await this.auditLog.log({
       usuario: actorNombre,
@@ -375,6 +389,13 @@ export class HomologacionService {
           ]
         : []),
     ]);
+    if (estado === 'APROBADO')
+      // A fresh approval answers every open risk alert (re-evaluation done,
+      // documents reviewed, list hit cleared by Compliance).
+      await this.prisma.alertaRiesgo.updateMany({
+        where: { proveedorId, estado: 'ABIERTA' },
+        data: { estado: 'RESUELTA', resolucion: 'Homologación aprobada de nuevo por Compliance.', resueltaPor: actorNombre, resueltaAt: new Date() },
+      });
     await this.auditLog.log({
       usuario: actorNombre,
       accion: estado === 'APROBADO' ? 'Homologación aprobada' : 'Homologación rechazada',

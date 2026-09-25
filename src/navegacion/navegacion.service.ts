@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  EstadoAlertaRiesgo,
   EstadoAprobacion,
   EstadoDocumento,
   EstadoFactura,
@@ -7,6 +8,7 @@ import {
   EstadoInvitacion,
   EstadoPago,
   EstadoProntoPago,
+  EstadoRequerimiento,
   Portal,
   Role,
   TipoRegla,
@@ -85,7 +87,11 @@ export class NavegacionService {
 
   private async proveedor(userId: string) {
     const proveedorId = await this.proveedores.findIdForUser(userId);
-    const [invitaciones, porFacturar] = await Promise.all([
+    const perfil = await this.prisma.proveedorProfile.findUnique({
+      where: { id: proveedorId },
+      select: { categorias: true },
+    });
+    const [invitaciones, porFacturar, oportunidades] = await Promise.all([
       this.prisma.invitacion.count({
         where: { proveedorId, enviada: true, estado: EstadoInvitacion.NUEVA },
       }),
@@ -100,8 +106,20 @@ export class NavegacionService {
           },
         },
       }),
+      // Open tenders of its categories it hasn't joined yet.
+      perfil?.categorias.length
+        ? this.prisma.requerimiento.count({
+            where: {
+              abiertoRed: true,
+              estado: EstadoRequerimiento.EN_LICITACION,
+              fechaLimite: { gt: new Date() },
+              categoria: { in: perfil.categorias, mode: 'insensitive' },
+              invitaciones: { none: { proveedorId } },
+            },
+          })
+        : 0,
     ]);
-    return { invitaciones, pagos: porFacturar };
+    return { invitaciones, pagos: porFacturar, oportunidades };
   }
 
   private async interno(role: Role): Promise<Record<string, number>> {
@@ -124,6 +142,9 @@ export class NavegacionService {
         ],
       },
     });
-    return { homologacion };
+    const riesgo = await this.prisma.alertaRiesgo.count({
+      where: { estado: EstadoAlertaRiesgo.ABIERTA },
+    });
+    return { homologacion, riesgo };
   }
 }
